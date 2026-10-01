@@ -16,7 +16,7 @@ from aavso_viewer.models.session import Session
 from aavso_viewer.ui import plotting
 
 
-class _FilterCheckboxRow(QWidget):
+class FilterCheckboxRow(QWidget):
     def __init__(self, filters: list[str], on_change, parent=None):
         super().__init__(parent)
         self._boxes: dict[str, QCheckBox] = {}
@@ -64,7 +64,7 @@ class LightCurveDetailDialog(_BaseDetailDialog):
         super().__init__(f"{session.star_name} — Light Curve", parent)
         self.session = session
 
-        self.filter_row = _FilterCheckboxRow(session.filters, self._refresh)
+        self.filter_row = FilterCheckboxRow(session.filters, self._refresh)
         self.controls_row.addWidget(self.filter_row)
 
         self.role_target = QCheckBox("Target")
@@ -102,7 +102,7 @@ class CompStarsDetailDialog(_BaseDetailDialog):
         self.session = session
         self.stars = session.comp_star_names()
 
-        self.filter_row = _FilterCheckboxRow(session.filters, self._refresh)
+        self.filter_row = FilterCheckboxRow(session.filters, self._refresh)
         self.controls_row.addWidget(self.filter_row)
 
         self.star_boxes: dict[str, QCheckBox] = {}
@@ -141,7 +141,7 @@ class DiagnosticDetailDialog(_BaseDetailDialog):
         self.ylabel = ylabel
         self.is_airmass = is_airmass
 
-        self.filter_row = _FilterCheckboxRow(session.filters, self._refresh)
+        self.filter_row = FilterCheckboxRow(session.filters, self._refresh)
         self.controls_row.addWidget(self.filter_row)
         self.controls_row.addStretch(1)
 
@@ -160,5 +160,52 @@ class DiagnosticDetailDialog(_BaseDetailDialog):
                 if not df.empty:
                     plotting.plot_diagnostic(ax, df, thumbnail=False, ylabel=self.ylabel)
             ax.set_title(self.title_text)
+
+        self._redraw(plot)
+
+
+class CheckBeforeAfterDetailDialog(_BaseDetailDialog):
+    """Check star's magnitude before vs. after the transform -- filter multi-select
+    only (a catalog-reference line is drawn when a single filter is selected)."""
+
+    def __init__(self, session: Session, parent=None):
+        super().__init__(f"{session.star_name} — Check Star Before/After", parent)
+        self.session = session
+
+        self.filter_row = FilterCheckboxRow(session.filters, self._refresh)
+        self.controls_row.addWidget(self.filter_row)
+        self.controls_row.addStretch(1)
+
+        self._refresh()
+
+    def _refresh(self) -> None:
+        filters = self.filter_row.selected()
+
+        def plot(ax):
+            plotting.plot_check_before_after(ax, self.session, thumbnail=False, filters=filters or None)
+            ax.set_title("Check Star Before/After")
+
+        self._redraw(plot)
+
+
+class TargetBeforeAfterDetailDialog(_BaseDetailDialog):
+    """Target's magnitude before vs. after the transform -- filter multi-select only."""
+
+    def __init__(self, session: Session, parent=None):
+        super().__init__(f"{session.star_name} — Target Before/After", parent)
+        self.session = session
+
+        self.filter_row = FilterCheckboxRow(session.filters, self._refresh)
+        self.controls_row.addWidget(self.filter_row)
+        self.controls_row.addStretch(1)
+
+        self._refresh()
+
+    def _refresh(self) -> None:
+        filters = self.filter_row.selected()
+
+        def plot(ax):
+            plotting.plot_target_before_after(ax, self.session, thumbnail=False, filters=filters or None)
+            ax.set_title("Target Before/After")
 
         self._redraw(plot)

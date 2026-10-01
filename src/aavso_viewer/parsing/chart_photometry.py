@@ -14,7 +14,10 @@ from dataclasses import dataclass
 
 import requests
 
-_CHART_URL = "https://www.aavso.org/vsp/api/chart/{chart_id}/"
+from aavso_viewer.parsing.aavso_api import APPS_BASE_URL, auth_headers
+
+# www.aavso.org/vsp is Cloudflare-blocked for scripted requests -- see aavso_api.
+_CHART_URL = APPS_BASE_URL + "/vsp/api/chart/{chart_id}/"
 
 # The VSP API names the red/infrared bands "Rc"/"Ic" (Cousins system) rather than the
 # AAVSO Extended report's plain "R"/"I" filter codes.
@@ -34,7 +37,12 @@ def fetch_chart_photometry(chart_id: str, timeout: float = 8.0) -> dict[str, dic
     {"103": {"V": ChartMag(10.334, 0.047)}, ...}. Raises on any network/parse failure
     -- callers should catch and degrade gracefully, since this is an optional online
     enhancement to an otherwise fully offline tool."""
-    resp = requests.get(_CHART_URL.format(chart_id=chart_id), params={"format": "json"}, timeout=timeout)
+    resp = requests.get(
+        _CHART_URL.format(chart_id=chart_id),
+        params={"format": "json"},
+        headers=auth_headers(),
+        timeout=timeout,
+    )
     resp.raise_for_status()
     data = resp.json()
 

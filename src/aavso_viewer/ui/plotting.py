@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import datetime
+
+import matplotlib.dates as mdates
 import pandas as pd
 from matplotlib.ticker import MaxNLocator
+
+from aavso_viewer.models.jd import jd_to_datetime
 
 ROLE_COLORS = {"target": "#1565c0", "check": "#c62828"}
 # VPhot's own filter-color convention -- B/V/R map onto the intuitive blue/green/red.
@@ -12,6 +17,9 @@ _FALLBACK_PALETTE = [
     "#8c564b", "#9467bd", "#ff7f0e", "#17becf", "#e377c2", "#bcbd22", "#7f7f7f",
 ]
 AIRMASS_COLOR = "#1565c0"
+# Matches the notebook's plot_before_after palette (tab:orange / tab:blue).
+BEFORE_COLOR = "#ff7f0e"
+AFTER_COLOR = "#1f77b4"
 _STAR_PALETTE = [
     "#1f77b4", "#d62728", "#2ca02c", "#9467bd", "#ff7f0e",
     "#17becf", "#8c564b", "#e377c2", "#bcbd22", "#7f7f7f",
@@ -102,6 +110,114 @@ def plot_diagnostic(ax, df: pd.DataFrame, thumbnail: bool, ylabel: str) -> None:
     _style_axes(ax, thumbnail, xlabel=f"JD+{base}", ylabel=ylabel)
     if not thumbnail:
         ax.legend(fontsize=8)
+
+
+def _plot_before_after(ax, session, column: str, thumbnail: bool, filters: list[str] | None = None) -> None:
+    filters = filters or session.filters
+    df_before = session.aavso.df
+    df_after = session.after.df if session.after is not None else None
+    if df_before.empty:
+        return
+    base = int(df_before["DATE"].min())
+
+    for i, filt in enumerate(filters):
+        gb = df_before.loc[df_before["FILT"] == filt].sort_values("DATE")
+        _draw(ax, gb["DATE"] - base, gb[column], BEFORE_COLOR, thumbnail, label="Before" if i == 0 else None)
+        if df_after is not None:
+            ga = df_after.loc[df_after["FILT"] == filt].sort_values("DATE")
+            _draw(ax, ga["DATE"] - base, ga[column], AFTER_COLOR, thumbnail, label="After" if i == 0 else None)
+
+    ax.invert_yaxis()
+    _style_axes(ax, thumbnail, xlabel=f"JD+{base}", ylabel="Magnitude")
+
+
+def plot_check_before_after(ax, session, thumbnail: bool, filters: list[str] | None = None) -> None:
+    """Check star's magnitude, before vs. after the transform. A catalog-reference
+    line is only drawn when a single filter is shown (each filter has its own
+    catalog magnitude, so a combined multi-filter view has no single line to draw)."""
+    _plot_before_after(ax, session, "KEFF", thumbnail, filters)
+
+    filters = filters or session.filters
+    if not thumbnail and len(filters) == 1:
+        sub = session.aavso.df.loc[session.aavso.df["FILT"] == filters[0]]
+        if len(sub):
+            refmag = sub["KREFMAG"].iloc[0]
+            if pd.notna(refmag):
+                ax.axhline(refmag, color="gray", linestyle="--", linewidth=1, label=f"Catalog ref {refmag:.3f}")
+
+    if not thumbnail:
+        ax.legend(fontsize=8)
+
+
+def plot_target_before_after(ax, session, thumbnail: bool, filters: list[str] | None = None) -> None:
+    """Target's magnitude, before vs. after the transform -- a gut-check that the
+    transform didn't distort the light curve's shape or amplitude."""
+    _plot_before_after(ax, session, "MAG", thumbnail, filters)
+    if not thumbnail:
+        ax.legend(fontsize=8)
+
+
+# Hawaii-Aleutian Standard Time -- fixed UTC-10:00, no DST observed.
+_HST = datetime.timezone(datetime.timedelta(hours=-10))
+
+
+def plot_share_light_curve(ax, df: pd.DataFrame, time_mode: str, filters: list[str]) -> None:
+    """A light curve styled for sharing outside the app: larger points, a plain
+    (unrotated-offset) time axis in the caller's chosen units, and one color-coded
+    series per selected filter (a legend is shown only when more than one filter is
+    plotted). df is long-form with DATE, FILT, MAG columns. time_mode is one of
+    'jd', 'utc', 'hst'."""
+    if df.empty:
+        ax.text(
+            0.5, 0.5, "No data for this selection", ha="center", va="center",
+            transform=ax.transAxes, color="#999999", fontsize=11,
+        )
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        return
+
+    # matplotlib's date machinery round-trips every datetime through a UTC-based
+    # numeric representation -- the tzinfo on each point only affects *which*
+    # absolute instant it is, not how ticks are labeled. The label timezone has to
+    # be passed explicitly to the locator/formatter, or both axes silently render
+    # in UTC regardless of which mode was requested.
+    tz = _HST if time_mode == "hst" else datetime.timezone.utc
+
+    for filt in filters:
+        sub = df.loc[df["FILT"] == filt]
+        if sub.empty:
+            continue
+        color = filter_color(filt)
+        label = filt if len(filters) > 1 else None
+        if time_mode == "jd":
+            ax.plot(sub["DATE"], sub["MAG"], marker="o", linestyle="none", markersize=5, color=color, alpha=0.85, label=label)
+        else:
+            times = [jd_to_datetime(jd) for jd in sub["DATE"]]
+            ax.plot(times, sub["MAG"], marker="o", linestyle="none", markersize=5, color=color, alpha=0.85, label=label)
+
+    if time_mode == "jd":
+        # Julian Dates are large (~2.46e6) -- without this, matplotlib defaults to a
+        # scientific-notation offset label that's confusing out of context.
+        ax.ticklabel_format(useOffset=False, style="plain", axis="x")
+        ax.set_xlabel("Julian Date (JD)", fontsize=10)
+        for label in ax.get_xticklabels():
+            label.set_rotation(30)
+            label.set_ha("right")
+    else:
+        locator = mdates.AutoDateLocator(tz=tz)
+        ax.xaxis.set_major_locator(locator)
+        ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator, tz=tz))
+        ax.set_xlabel("UTC" if time_mode == "utc" else "HST", fontsize=10)
+
+    ax.invert_yaxis()
+    ax.set_ylabel("Magnitude", fontsize=10)
+    ax.tick_params(labelsize=9)
+    ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.3)
+    ax.margins(y=0.25)
+    if len(filters) > 1:
+        ax.legend(fontsize=9)
 
 
 def plot_airmass(ax, df: pd.DataFrame, thumbnail: bool) -> None:

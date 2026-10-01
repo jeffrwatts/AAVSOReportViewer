@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from aavso_viewer.parsing.chart_photometry import fetch_chart_photometry
 
-# A trimmed real response from https://www.aavso.org/vsp/api/chart/X42923UD/?format=json
+# A trimmed real response from https://apps.aavso.org/vsp/api/chart/X42923UD/?format=json
 SAMPLE_RESPONSE = {
     "chartid": "X42923UD",
     "photometry": [

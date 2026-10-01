@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -26,21 +25,32 @@ from aavso_viewer.models.session import (
 )
 from aavso_viewer.parsing.aavso_report import parse_aavso_report
 from aavso_viewer.parsing.general_report import parse_general_report
-from aavso_viewer.ui import plotting
+from aavso_viewer.ui import coloring, plotting
 from aavso_viewer.ui.chart_detail_dialog import (
+    CheckBeforeAfterDetailDialog,
     CompStarsDetailDialog,
     DiagnosticDetailDialog,
     LightCurveDetailDialog,
+    TargetBeforeAfterDetailDialog,
 )
 from aavso_viewer.ui.chart_thumbnail import ChartThumbnail
+from aavso_viewer.ui.share_plot_dialog import SharePlotDialog
 from aavso_viewer.ui.startup_dialog import StartupDialog
 
-TABLE_COLUMNS = ["Star", "Filter", "Average", "Min", "Max", "Std", "KREFERR", "Avg. SNR"]
+# Column order. The "(After)" columns are hidden entirely (not just blank) unless a
+# Transformed Report is loaded, matching Jeff's established lean-table preference --
+# see feedback-notebook-table-iteration.md.
+TABLE_COLUMNS = [
+    "Star", "Filter", "Average", "Average (After)", "Range", "Range (After)",
+    "Std", "Std (After)", "KREFERR", "VSX Range", "Avg. SNR",
+]
+_AFTER_ONLY_COLUMNS = ["Average (After)", "Range (After)", "Std (After)"]
 
-# Delta vs. catalog uncertainty: the natural yardstick for whether an observed offset
-# from the catalog magnitude is real. Matches the notebook's Good/Flag palette.
-COLOR_GOOD = QColor("#2e7d32")
-COLOR_FLAG = QColor("#d32f2f")
+COLOR_TABLE_COLUMNS = ["Star", "Index", "Catalog", "Measured", "Measured (After)", "Catalog Err"]
+_COLOR_AFTER_ONLY_COLUMNS = ["Measured (After)"]
+# Noise Floor and Trend are still computed (Session.build_summary_rows) and still
+# drive Std's coloring, but per Jeff's simplification request they're no longer shown
+# as their own columns -- matches the notebook's leaner Check Stars table shape.
 
 _DIAGNOSTIC_SPECS = [
     # (General Report column, thumbnail title, ylabel)
@@ -72,6 +82,34 @@ class _WheelForwarder(QObject):
         return False
 
 
+class _FitTable(QTableWidget):
+    """A table whose columns are each at least as wide as their content, with any
+    spare width shared equally -- unlike QHeaderView.Stretch, which gives every
+    column the same width regardless of content and so wraps wide cells like
+    '12.280 (+0.063)' onto two lines while narrow ones ('V') sit half empty. Its
+    minimum width is the content total, so a too-narrow window scrolls horizontally
+    (via the page's QScrollArea) instead of wrapping."""
+
+    def fit_columns(self) -> None:
+        header = self.horizontalHeader()
+        cols = [c for c in range(self.columnCount()) if not self.isColumnHidden(c)]
+        if not cols:
+            return
+        padding = 16
+        widths = {
+            c: max(self.sizeHintForColumn(c), header.sectionSizeHint(c)) + padding for c in cols
+        }
+        self.setMinimumWidth(sum(widths.values()) + 2 * self.frameWidth())
+        spare = max(self.viewport().width() - sum(widths.values()), 0)
+        extra, remainder = divmod(spare, len(cols))
+        for i, c in enumerate(cols):
+            header.resizeSection(c, widths[c] + extra + (1 if i < remainder else 0))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.fit_columns()
+
+
 class MainWindow(QMainWindow):
     def __init__(self, session: Session):
         super().__init__()
@@ -89,19 +127,18 @@ class MainWindow(QMainWindow):
         self.header_label.setStyleSheet("font-size: 13px; font-weight: 600; padding: 4px;")
         layout.addWidget(self.header_label)
 
-        self.table = QTableWidget()
-        self.table.setColumnCount(len(TABLE_COLUMNS))
-        self.table.setHorizontalHeaderLabels(TABLE_COLUMNS)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.table.verticalHeader().setVisible(False)
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table = self._make_table(TABLE_COLUMNS)
         self.table.cellClicked.connect(self._on_table_cell_clicked)
-        # The table always renders every row at full height (no internal scrollbar of
-        # its own) -- the outer QScrollArea below is what scrolls when the window is
-        # smaller than the table + chart grid combined, so resizing the window is left
-        # entirely up to the user instead of the app fighting it on every refresh.
-        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         layout.addWidget(self.table)
+
+        # Color indices (B-V, V-R, ...) for check/comparison stars -- a separate small
+        # table rather than more columns on the per-filter one, since each index spans
+        # two filter rows. Hidden entirely when the session has fewer than two filters.
+        self.color_label = QLabel("Color Indices")
+        self.color_label.setStyleSheet("font-size: 13px; font-weight: 600; padding: 8px 4px 4px 4px;")
+        layout.addWidget(self.color_label)
+        self.color_table = self._make_table(COLOR_TABLE_COLUMNS)
+        layout.addWidget(self.color_table)
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -110,8 +147,9 @@ class MainWindow(QMainWindow):
         self._scroll_area = scroll_area
 
         self._wheel_forwarder = _WheelForwarder(scroll_area, self)
-        self.table.viewport().installEventFilter(self._wheel_forwarder)
-        self.table.installEventFilter(self._wheel_forwarder)
+        for table in (self.table, self.color_table):
+            table.viewport().installEventFilter(self._wheel_forwarder)
+            table.installEventFilter(self._wheel_forwarder)
 
         self._set_initial_size()
 
@@ -122,6 +160,23 @@ class MainWindow(QMainWindow):
         self.thumbnails: dict[str, ChartThumbnail] = {}
 
         self._refresh_all()
+
+    @staticmethod
+    def _make_table(columns: list[str]) -> _FitTable:
+        table = _FitTable()
+        table.setColumnCount(len(columns))
+        table.setHorizontalHeaderLabels(columns)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)
+        table.setWordWrap(False)
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        # Tables always render every row at full height (no internal scrollbar of
+        # their own) -- the outer QScrollArea is what scrolls when the window is
+        # smaller than the tables + chart grid combined, so resizing the window is left
+        # entirely up to the user instead of the app fighting it on every refresh.
+        table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        return table
 
     # -- menu -----------------------------------------------------------------
 
@@ -138,9 +193,16 @@ class MainWindow(QMainWindow):
         open_general_action = menu.addAction("Open General Report…")
         open_general_action.triggered.connect(self._prompt_for_general_report)
 
+        open_transformed_action = menu.addAction("Open Transformed Report…")
+        open_transformed_action.triggered.connect(self._prompt_for_transformed_report)
+
         menu.addSeparator()
         exit_action = menu.addAction("Exit")
         exit_action.triggered.connect(self.close)
+
+        chart_menu = self.menuBar().addMenu("&Chart")
+        share_plot_action = chart_menu.addAction("Share Plot…")
+        share_plot_action.triggered.connect(self._open_share_plot)
 
     def _open_report_set(self) -> None:
         """Load a whole new session (AAVSO Report + optional Transformed/General
@@ -153,10 +215,14 @@ class MainWindow(QMainWindow):
             report = parse_aavso_report(dialog.aavso_report_path())
             general_path = dialog.general_report_path()
             general = parse_general_report(general_path) if general_path else None
+            transformed_path = dialog.transformed_report_path()
+            after = parse_aavso_report(transformed_path) if transformed_path else None
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Failed to load report set", str(exc))
             return
         self.session = Session(report, general)
+        if after is not None:
+            self.session.attach_after_report(after)
         self.transformed_report_path = dialog.transformed_report_path()
         self._refresh_all()
 
@@ -188,6 +254,24 @@ class MainWindow(QMainWindow):
         self.session.attach_general_report(general)
         self._refresh_all()
 
+    def _prompt_for_transformed_report(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open Transformed Report", "", "Text files (*.txt);;All files (*)"
+        )
+        if not path:
+            return
+        try:
+            after = parse_aavso_report(path)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Failed to load Transformed Report", str(exc))
+            return
+        self.session.attach_after_report(after)
+        self.transformed_report_path = path
+        self._refresh_all()
+
+    def _open_share_plot(self) -> None:
+        SharePlotDialog(self.session, self).exec()
+
     # -- header -----------------------------------------------------------------
 
     def _refresh_header(self) -> None:
@@ -197,6 +281,8 @@ class MainWindow(QMainWindow):
         badges.append("Transformed" if s.is_transformed else "Untransformed")
         if s.is_ensemble:
             badges.append("Ensemble")
+        if s.has_after_report:
+            badges.append("Before/After Comparison")
         filters_str = ", ".join(s.filters)
         self.header_label.setText(
             f"{s.star_name}  —  {date_str}  —  Filters: {filters_str}  —  {' / '.join(badges)}"
@@ -205,37 +291,99 @@ class MainWindow(QMainWindow):
     # -- summary table -----------------------------------------------------------------
 
     def _refresh_table(self) -> None:
+        has_after = self.session.has_after_report
+        for col, name in enumerate(TABLE_COLUMNS):
+            self.table.setColumnHidden(col, name in _AFTER_ONLY_COLUMNS and not has_after)
+
         rows = self.session.build_summary_rows()
         sections = [SECTION_TARGETS, SECTION_CHECK, SECTION_COMPARISON]
         by_section = {s: [r for r in rows if r.section == s] for s in sections}
 
         total_rows = len(sections) + len(rows)  # one header row per section
+        self.table.clearSpans()
         self.table.setRowCount(total_rows)
 
         r = 0
         for section in sections:
-            self.table.setSpan(r, 0, 1, len(TABLE_COLUMNS))
-            header_item = QTableWidgetItem(section)
-            header_item.setFlags(Qt.ItemIsEnabled)
-            header_item.setBackground(Qt.lightGray)
-            font = header_item.font()
-            font.setBold(True)
-            header_item.setFont(font)
-            self.table.setItem(r, 0, header_item)
+            self._set_section_header(self.table, r, section, len(TABLE_COLUMNS))
             r += 1
 
+            is_target = section == SECTION_TARGETS
             for row in by_section[section]:
                 self.table.setItem(r, 0, self._star_item(row.star_label, row.catalog_mag))
                 self.table.setItem(r, 1, self._center_item(row.filt))
-                self.table.setItem(r, 2, self._average_item(row))
-                self.table.setItem(r, 3, self._numeric_item(row.minimum, row.needs_general_report))
-                self.table.setItem(r, 4, self._numeric_item(row.maximum, row.needs_general_report))
-                self.table.setItem(r, 5, self._numeric_item(row.std, row.needs_general_report))
-                self.table.setItem(r, 6, self._numeric_item(row.kreferr))
-                self.table.setItem(r, 7, self._snr_item(row.avg_snr, row.avg_snr_available))
+                self.table.setItem(r, 2, self._average_item(row.average, row.delta, row.kreferr, row.needs_general_report))
+                self.table.setItem(r, 3, self._average_item(row.average_after, row.delta_after, row.kreferr, False))
+                self.table.setItem(r, 4, self._range_item(row) if is_target else self._dash_item())
+                self.table.setItem(r, 5, self._range_after_item(row) if is_target else self._dash_item())
+                # Std is only a meaningful measurement-precision signal for non-
+                # variable stars (check/comparison) -- a target's own Std reflects
+                # real astrophysical variability too (rapid pulsators like CY Aqr
+                # routinely swing 0.1+ mag per session), so coloring it against the
+                # mentor's precision guide would be a category error. The check
+                # star's colored Std already serves, per the mentor, as the intended
+                # proxy for the target's likely measurement error.
+                self.table.setItem(r, 6, self._numeric_item(row.std, row.needs_general_report, None if is_target else coloring.std_color(row.std)))
+                self.table.setItem(r, 7, self._numeric_item(row.std_after, False, None if is_target else coloring.std_color(row.std_after)))
+                self.table.setItem(r, 8, self._numeric_item(row.kreferr))
+                self.table.setItem(r, 9, self._vsx_range_item(row))
+                self.table.setItem(r, 10, self._snr_item(row.avg_snr, row.avg_snr_available))
                 r += 1
 
-        self._resize_table_to_contents()
+        self._resize_table_to_contents(self.table)
+        self._refresh_color_table(rows)
+
+    def _refresh_color_table(self, summary_rows) -> None:
+        color_rows = self.session.build_color_rows(summary_rows)
+        self.color_label.setVisible(bool(color_rows))
+        self.color_table.setVisible(bool(color_rows))
+        if not color_rows:
+            return
+
+        has_after = self.session.has_after_report
+        for col, name in enumerate(COLOR_TABLE_COLUMNS):
+            self.color_table.setColumnHidden(col, name in _COLOR_AFTER_ONLY_COLUMNS and not has_after)
+
+        sections = [s for s in (SECTION_CHECK, SECTION_COMPARISON) if any(c.section == s for c in color_rows)]
+        self.color_table.clearSpans()
+        self.color_table.setRowCount(len(sections) + len(color_rows))
+        r = 0
+        for section in sections:
+            self._set_section_header(self.color_table, r, section, len(COLOR_TABLE_COLUMNS))
+            r += 1
+            for row in (c for c in color_rows if c.section == section):
+                self.color_table.setItem(r, 0, self._center_item(row.star_label))
+                self.color_table.setItem(r, 1, self._center_item(row.index))
+                self.color_table.setItem(r, 2, self._numeric_item(row.catalog))
+                # Catalog color errors (~0.1) swamp typical deltas, so with an after
+                # report the question becomes "did the transform move it closer?":
+                # After is colored by improvement and Measured stays plain. Without
+                # one, fall back to the main table's delta-vs-catalog-error rule.
+                if has_after:
+                    measured = self._average_item(row.measured, row.delta, None, False)
+                    after = self._average_item(row.measured_after, row.delta_after, None, False)
+                    color = coloring.improvement_color(row.delta, row.delta_after, row.catalog_err)
+                    if color is not None:
+                        after.setForeground(color)
+                else:
+                    measured = self._average_item(row.measured, row.delta, row.catalog_err, False)
+                    after = self._dash_item()
+                self.color_table.setItem(r, 3, measured)
+                self.color_table.setItem(r, 4, after)
+                self.color_table.setItem(r, 5, self._numeric_item(row.catalog_err))
+                r += 1
+        self._resize_table_to_contents(self.color_table)
+
+    @staticmethod
+    def _set_section_header(table: QTableWidget, r: int, section: str, n_columns: int) -> None:
+        table.setSpan(r, 0, 1, n_columns)
+        header_item = QTableWidgetItem(section)
+        header_item.setFlags(Qt.ItemIsEnabled)
+        header_item.setBackground(Qt.lightGray)
+        font = header_item.font()
+        font.setBold(True)
+        header_item.setFont(font)
+        table.setItem(r, 0, header_item)
 
     @staticmethod
     def _center_item(text: str) -> QTableWidgetItem:
@@ -251,7 +399,7 @@ class MainWindow(QMainWindow):
         return item
 
     @staticmethod
-    def _numeric_item(value: float | None, clickable: bool = False) -> QTableWidgetItem:
+    def _numeric_item(value: float | None, clickable: bool = False, color=None) -> QTableWidgetItem:
         if value is not None:
             text = f"{value:.3f}"
         else:
@@ -260,20 +408,64 @@ class MainWindow(QMainWindow):
         item.setTextAlignment(Qt.AlignCenter)
         if text == "*":
             item.setForeground(Qt.gray)
+        elif color is not None:
+            item.setForeground(color)
         return item
 
     @staticmethod
-    def _average_item(row) -> QTableWidgetItem:
-        if row.average is None:
-            item = QTableWidgetItem("*" if row.needs_general_report else "-")
-            if row.needs_general_report:
+    def _average_item(value: float | None, delta: float | None, kreferr: float | None, clickable: bool) -> QTableWidgetItem:
+        if value is None:
+            item = QTableWidgetItem("*" if clickable else "-")
+            if clickable:
                 item.setForeground(Qt.gray)
         else:
-            delta = row.delta
-            text = f"{row.average:.3f}" if delta is None else f"{row.average:.3f} ({delta:+.3f})"
+            text = f"{value:.3f}" if delta is None else f"{value:.3f} ({delta:+.3f})"
             item = QTableWidgetItem(text)
-            if delta is not None and row.kreferr:
-                item.setForeground(COLOR_FLAG if abs(delta) > row.kreferr else COLOR_GOOD)
+            color = coloring.ratio_color(delta, kreferr)
+            if color is not None:
+                item.setForeground(color)
+        item.setTextAlignment(Qt.AlignCenter)
+        return item
+
+    @staticmethod
+    def _dash_item() -> QTableWidgetItem:
+        item = QTableWidgetItem("-")
+        item.setTextAlignment(Qt.AlignCenter)
+        return item
+
+    @staticmethod
+    def _range_item(row) -> QTableWidgetItem:
+        if row.minimum is None or row.maximum is None:
+            text = "-"
+        else:
+            text = f"{row.minimum:.3f}–{row.maximum:.3f}"
+        item = QTableWidgetItem(text)
+        item.setTextAlignment(Qt.AlignCenter)
+        color = coloring.range_color(row.vsx_excess)
+        if color is not None:
+            item.setForeground(color)
+        return item
+
+    @staticmethod
+    def _range_after_item(row) -> QTableWidgetItem:
+        if row.range_after is None:
+            text = "-"
+        else:
+            text = f"{row.range_after[0]:.3f}–{row.range_after[1]:.3f}"
+        item = QTableWidgetItem(text)
+        item.setTextAlignment(Qt.AlignCenter)
+        color = coloring.range_color(row.vsx_excess_after)
+        if color is not None:
+            item.setForeground(color)
+        return item
+
+    @staticmethod
+    def _vsx_range_item(row) -> QTableWidgetItem:
+        if row.vsx_bright is None:
+            text = "-"
+        else:
+            text = f"{row.vsx_bright:.2f}–{row.vsx_faint:.2f}"
+        item = QTableWidgetItem(text)
         item.setTextAlignment(Qt.AlignCenter)
         return item
 
@@ -291,16 +483,18 @@ class MainWindow(QMainWindow):
             item.setForeground(Qt.gray)
         return item
 
-    def _resize_table_to_contents(self) -> None:
-        """Size the table to its content height so every row renders without the
+    @staticmethod
+    def _resize_table_to_contents(table: _FitTable) -> None:
+        """Size a table to its content height so every row renders without the
         table's own scrollbar -- the outer page-level QScrollArea (see __init__)
         handles overflow instead, leaving the window itself fully user-resizable."""
-        self.table.resizeRowsToContents()
-        height = self.table.horizontalHeader().height() + 2 * self.table.frameWidth()
-        for r in range(self.table.rowCount()):
-            height += self.table.rowHeight(r)
-        self.table.setMinimumHeight(height)
-        self.table.setMaximumHeight(height)
+        table.fit_columns()
+        table.resizeRowsToContents()
+        height = table.horizontalHeader().height() + 2 * table.frameWidth()
+        for r in range(table.rowCount()):
+            height += table.rowHeight(r)
+        table.setMinimumHeight(height)
+        table.setMaximumHeight(height)
 
     def _on_table_cell_clicked(self, row: int, column: int) -> None:
         item = self.table.item(row, column)
@@ -429,6 +623,24 @@ class MainWindow(QMainWindow):
             skyglow_thumb.clicked.connect(self._prompt_for_general_report)
             skyglow_thumb.set_unavailable()
         self.chart_grid.addWidget(skyglow_thumb, grid_row, 0)
+        grid_row += 1
+
+        # Row 5: Check Star Before/After + Target Before/After, paired -- only shown
+        # once a Transformed Report is loaded (increment 2).
+        if s.has_after_report:
+            check_ba_thumb = self._make_thumbnail("check_before_after", "Check Star Before/After")
+            check_ba_thumb.clicked.connect(lambda: CheckBeforeAfterDetailDialog(s, self).exec())
+            check_ba_thumb.render(
+                lambda ax, thumbnail: plotting.plot_check_before_after(ax, s, thumbnail=thumbnail)
+            )
+            self.chart_grid.addWidget(check_ba_thumb, grid_row, 0)
+
+            target_ba_thumb = self._make_thumbnail("target_before_after", "Target Before/After")
+            target_ba_thumb.clicked.connect(lambda: TargetBeforeAfterDetailDialog(s, self).exec())
+            target_ba_thumb.render(
+                lambda ax, thumbnail: plotting.plot_target_before_after(ax, s, thumbnail=thumbnail)
+            )
+            self.chart_grid.addWidget(target_ba_thumb, grid_row, 1)
 
     # -- combined refresh -----------------------------------------------------------------
 
