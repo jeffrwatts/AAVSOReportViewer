@@ -11,9 +11,11 @@ import pandas as pd
 
 from aavso_viewer.models.jd import jd_to_date
 from aavso_viewer.parsing.aavso_report import AavsoReport
-from aavso_viewer.parsing.chart_photometry import ChartMag, fetch_chart_photometry
+from aavso_viewer.parsing.chart_photometry import ChartMag, fetch_chart_auids, fetch_chart_photometry
 from aavso_viewer.parsing.general_report import GeneralReport
 from aavso_viewer.parsing.vsx import fetch_vsx_range
+from aavso_viewer.transform.coefficients import TransformCoefficients
+from aavso_viewer.transform.engine import TransformResult, transform_report
 
 # General Report <-> AAVSO report timestamps are computed independently and can differ
 # by a few 1e-5 days even for the same exposure -- nearest-within-tolerance join is
@@ -158,6 +160,9 @@ class Session:
         self.aavso = aavso
         self.general: GeneralReport | None = None
         self.after: AavsoReport | None = None
+        self.after_source: str | None = None
+        """Where the after report came from, for display -- a file name, or the
+        coefficient file when the transform was applied in-app."""
         self._merged: pd.DataFrame | None = None
         self._chart_photometry: dict[str, dict[str, ChartMag]] | None = None
         self._chart_fetch_attempted = False
@@ -170,12 +175,30 @@ class Session:
         self.general = general
         self._merged = None
 
-    def attach_after_report(self, after: AavsoReport) -> None:
+    def attach_after_report(self, after: AavsoReport, source: str | None = None) -> None:
         """The TA-transformed counterpart of this session's (untransformed) report --
         matched by filter only, not star name, since a TransformApplier report renames
         stars from local designations (e.g. '117') to AAVSO AUIDs for the same
         physical star."""
         self.after = after
+        self.after_source = source
+
+    def apply_transform(self, coeffs: TransformCoefficients, lookup_auids: bool = True) -> TransformResult:
+        """Transform this session's report in-app and attach the result as the after
+        report. Raises transform.engine.TransformError if it can't be transformed."""
+        auids = None
+        if lookup_auids and self.chart_id:
+            try:
+                auids = fetch_chart_auids(self.chart_id)
+            except Exception:  # noqa: BLE001 -- optional online enhancement; labels are valid too
+                auids = None
+        result = transform_report(self.aavso, coeffs, auids)
+        self.attach_after_report(result.report, source=f"transformed in app with {coeffs.source}")
+        return result
+
+    def clear_transform(self) -> None:
+        self.after = None
+        self.after_source = None
 
     @property
     def has_general_report(self) -> bool:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import (
     QApplication,
@@ -25,6 +27,7 @@ from aavso_viewer.models.session import (
 )
 from aavso_viewer.parsing.aavso_report import parse_aavso_report
 from aavso_viewer.parsing.general_report import parse_general_report
+from aavso_viewer.transform.engine import untransformable_reason
 from aavso_viewer.ui import coloring, plotting
 from aavso_viewer.ui.chart_detail_dialog import (
     CheckBeforeAfterDetailDialog,
@@ -36,6 +39,8 @@ from aavso_viewer.ui.chart_detail_dialog import (
 from aavso_viewer.ui.chart_thumbnail import ChartThumbnail
 from aavso_viewer.ui.share_plot_dialog import SharePlotDialog
 from aavso_viewer.ui.startup_dialog import StartupDialog
+from aavso_viewer.ui.submission_wizard import SubmissionWizard
+from aavso_viewer.ui.transform_dialog import TransformDialog
 
 # Column order. The "(After)" columns are hidden entirely (not just blank) unless a
 # Transformed Report is loaded, matching Jeff's established lean-table preference --
@@ -114,7 +119,6 @@ class MainWindow(QMainWindow):
     def __init__(self, session: Session):
         super().__init__()
         self.session = session
-        self.transformed_report_path: str | None = None
 
         self.setWindowTitle("AAVSO Report Viewer")
 
@@ -200,14 +204,26 @@ class MainWindow(QMainWindow):
         exit_action = menu.addAction("Exit")
         exit_action.triggered.connect(self.close)
 
+        transform_menu = self.menuBar().addMenu("&Transform")
+        apply_action = transform_menu.addAction("Apply Transform…")
+        apply_action.triggered.connect(self._apply_transform)
+        self._clear_transform_action = transform_menu.addAction("Clear Transform")
+        self._clear_transform_action.triggered.connect(self._clear_transform)
+        transform_menu.aboutToShow.connect(
+            lambda: self._clear_transform_action.setEnabled(self.session.has_after_report)
+        )
+
+        report_menu = self.menuBar().addMenu("&Report")
+        submit_action = report_menu.addAction("Create Submission Report…")
+        submit_action.triggered.connect(self._create_submission)
+
         chart_menu = self.menuBar().addMenu("&Chart")
         share_plot_action = chart_menu.addAction("Share Plot…")
         share_plot_action.triggered.connect(self._open_share_plot)
 
     def _open_report_set(self) -> None:
-        """Load a whole new session (AAVSO Report + optional Transformed/General
-        Report) via the same three-field dialog shown at startup, without needing to
-        restart the app."""
+        """Load a whole new session (AAVSO Report + optional General Report) via the
+        same dialog shown at startup, without needing to restart the app."""
         dialog = StartupDialog(self)
         if dialog.exec() != QDialog.Accepted:
             return
@@ -215,15 +231,10 @@ class MainWindow(QMainWindow):
             report = parse_aavso_report(dialog.aavso_report_path())
             general_path = dialog.general_report_path()
             general = parse_general_report(general_path) if general_path else None
-            transformed_path = dialog.transformed_report_path()
-            after = parse_aavso_report(transformed_path) if transformed_path else None
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Failed to load report set", str(exc))
             return
         self.session = Session(report, general)
-        if after is not None:
-            self.session.attach_after_report(after)
-        self.transformed_report_path = dialog.transformed_report_path()
         self._refresh_all()
 
     def _open_aavso_report(self) -> None:
@@ -265,9 +276,42 @@ class MainWindow(QMainWindow):
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Failed to load Transformed Report", str(exc))
             return
-        self.session.attach_after_report(after)
-        self.transformed_report_path = path
+        self.session.attach_after_report(after, source=Path(path).name)
         self._refresh_all()
+
+    def _apply_transform(self) -> None:
+        reason = untransformable_reason(self.session.aavso)
+        if reason:
+            QMessageBox.information(self, "Apply Transform", reason)
+            return
+        dialog = TransformDialog(self.session, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            result = self.session.apply_transform(dialog.coefficients(), dialog.lookup_auids())
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Transform failed", str(exc))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        self._refresh_all()
+        if result.skipped:
+            QMessageBox.warning(
+                self,
+                "Some frames left untransformed",
+                f"{len(result.skipped)} frame(s) couldn't be paired and stay untransformed (TRANS=NO):\n\n"
+                + "\n".join(result.skipped[:15]),
+            )
+
+    def _clear_transform(self) -> None:
+        self.session.clear_transform()
+        self._refresh_all()
+
+    def _create_submission(self) -> None:
+        wizard = SubmissionWizard(self.session, self)
+        if wizard.exec() == QDialog.Accepted and wizard.saved_path is not None:
+            QMessageBox.information(self, "Submission report saved", f"Saved to\n{wizard.saved_path}")
 
     def _open_share_plot(self) -> None:
         SharePlotDialog(self.session, self).exec()
@@ -282,7 +326,7 @@ class MainWindow(QMainWindow):
         if s.is_ensemble:
             badges.append("Ensemble")
         if s.has_after_report:
-            badges.append("Before/After Comparison")
+            badges.append(f"Before/After: {s.after_source}" if s.after_source else "Before/After Comparison")
         filters_str = ", ".join(s.filters)
         self.header_label.setText(
             f"{s.star_name}  —  {date_str}  —  Filters: {filters_str}  —  {' / '.join(badges)}"

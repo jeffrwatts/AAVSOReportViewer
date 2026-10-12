@@ -32,11 +32,7 @@ class ChartMag:
     yardstick for whether an observed delta from this catalog value is real."""
 
 
-def fetch_chart_photometry(chart_id: str, timeout: float = 8.0) -> dict[str, dict[str, ChartMag]]:
-    """Returns {star_label: {filter_code: ChartMag}}, e.g.
-    {"103": {"V": ChartMag(10.334, 0.047)}, ...}. Raises on any network/parse failure
-    -- callers should catch and degrade gracefully, since this is an optional online
-    enhancement to an otherwise fully offline tool."""
+def _fetch_chart_json(chart_id: str, timeout: float) -> dict:
     resp = requests.get(
         _CHART_URL.format(chart_id=chart_id),
         params={"format": "json"},
@@ -44,7 +40,27 @@ def fetch_chart_photometry(chart_id: str, timeout: float = 8.0) -> dict[str, dic
         timeout=timeout,
     )
     resp.raise_for_status()
-    data = resp.json()
+    return resp.json()
+
+
+def fetch_chart_auids(chart_id: str, timeout: float = 8.0) -> dict[str, str]:
+    """Returns {star_label: AUID}, e.g. {"103": "000-BKZ-381"} -- AAVSO prefers AUIDs
+    over chart labels in CNAME/KNAME, and TransformApplier substitutes them. Raises on
+    any network/parse failure, like fetch_chart_photometry."""
+    data = _fetch_chart_json(chart_id, timeout)
+    return {
+        str(star["label"]).strip(): str(star["auid"]).strip()
+        for star in data.get("photometry", [])
+        if star.get("label") and star.get("auid")
+    }
+
+
+def fetch_chart_photometry(chart_id: str, timeout: float = 8.0) -> dict[str, dict[str, ChartMag]]:
+    """Returns {star_label: {filter_code: ChartMag}}, e.g.
+    {"103": {"V": ChartMag(10.334, 0.047)}, ...}. Raises on any network/parse failure
+    -- callers should catch and degrade gracefully, since this is an optional online
+    enhancement to an otherwise fully offline tool."""
+    data = _fetch_chart_json(chart_id, timeout)
 
     result: dict[str, dict[str, ChartMag]] = {}
     for star in data.get("photometry", []):

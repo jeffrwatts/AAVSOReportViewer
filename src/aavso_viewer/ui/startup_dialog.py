@@ -39,8 +39,9 @@ class _FilePickerRow:
 
 
 class StartupDialog(QDialog):
-    """Three-field startup dialog: AAVSO Report (required), Transformed Report
-    (optional, stored for increment 2), General Report (optional)."""
+    """Startup dialog: AAVSO Report (required) and General Report (optional). A
+    transformed counterpart is produced in-app (Transform menu) or loaded via
+    File → Open Transformed Report…"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -57,16 +58,9 @@ class StartupDialog(QDialog):
             "AAVSO Report",
             "The AAVSO Extended-format report to analyze — transformed or untransformed.",
         )
-        self.transformed_row = _FilePickerRow(
-            grid,
-            2,
-            "Transformed Report",
-            "If the report above is untransformed, add its TA-transformed counterpart "
-            "to compare before vs. after the transform.",
-        )
         self.general_row = _FilePickerRow(
             grid,
-            4,
+            2,
             "General Report",
             "VPhot's General Export for this session — adds SNR, FWHM, Skyglow, Max "
             "ADU, and (for ensembles) individual comparison star curves.",
@@ -87,9 +81,6 @@ class StartupDialog(QDialog):
 
     def aavso_report_path(self) -> str:
         return self.aavso_row.path()
-
-    def transformed_report_path(self) -> str | None:
-        return self.transformed_row.path() or None
 
     def general_report_path(self) -> str | None:
         return self.general_row.path() or None

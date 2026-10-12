@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from aavso_viewer.parsing.chart_photometry import fetch_chart_photometry
+from aavso_viewer.parsing.chart_photometry import fetch_chart_auids, fetch_chart_photometry
 
 # A trimmed real response from https://apps.aavso.org/vsp/api/chart/X42923UD/?format=json
 SAMPLE_RESPONSE = {
@@ -44,3 +44,12 @@ def test_fetch_chart_photometry_parses_response():
     assert set(result["108"].keys()) == {"V", "B", "R", "I"}
     assert result["108"]["R"].mag == 10.397
     assert result["108"]["I"].mag == 10.002
+
+
+def test_fetch_chart_auids_maps_labels():
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = SAMPLE_RESPONSE
+    mock_resp.raise_for_status.return_value = None
+
+    with patch("aavso_viewer.parsing.chart_photometry.requests.get", return_value=mock_resp):
+        assert fetch_chart_auids("X42923UD") == {"103": "000-BKZ-381", "108": "000-BKZ-357"}
