@@ -41,9 +41,16 @@ class AavsoReport:
     """The '#KEY=VALUE' parameters ahead of the column header (TYPE, OBSCODE,
     SOFTWARE, DELIM, DATE, OBSTYPE), as given -- needed to write the report back out."""
     comments: list[str] = field(default_factory=list)
-    """'#' lines to write right after the column header (e.g. the transform
-    coefficients a transformed report was produced with). Not populated by parsing."""
+    """'#' lines right after the column header (e.g. the transform coefficients a
+    transformed report was produced with) -- kept from the file when parsing, and
+    written back out after the column header."""
     source_path: Path | None = None
+
+
+def _is_commented_row(line: str, delim: str, n_columns: int) -> bool:
+    """TA keeps each original row as a '#'-commented copy just before its replacement
+    -- that's per-row provenance, not part of the header comment block."""
+    return line.count(delim) == n_columns - 1 and not line.startswith("# ")
 
 
 def parse_aavso_report(path: str | Path) -> AavsoReport:
@@ -58,6 +65,7 @@ def parse_aavso_report(path: str | Path) -> AavsoReport:
     delim = ","
     header: list[str] | None = None
     params: dict[str, str] = {}
+    comments: list[str] = []
     data_lines: list[list[str]] = []
 
     for line in path.read_text().splitlines():
@@ -74,6 +82,8 @@ def parse_aavso_report(path: str | Path) -> AavsoReport:
             key, sep, value = line[1:].partition("=")
             if header is None and sep and key.isupper():
                 params[key] = value.strip()
+            elif header is not None and not data_lines and not _is_commented_row(line, delim, len(header)):
+                comments.append(line)
         else:
             data_lines.append(line.split(delim))
 
@@ -86,7 +96,7 @@ def parse_aavso_report(path: str | Path) -> AavsoReport:
     for col in NUMERIC_COLUMNS:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-    return report_from_frame(df, header=params, source_path=path)
+    return report_from_frame(df, header=params, comments=comments, source_path=path)
 
 
 def report_from_frame(

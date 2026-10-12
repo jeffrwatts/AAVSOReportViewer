@@ -2,9 +2,12 @@
 AAVSO TransformApplier (TA)'s output for single-comparison-star sessions.
 
 The math works per comparison star: each frame's target and check magnitudes are
-transformed differentially against one comp star at a time, then averaged over comps.
-A single-comp session is just the one-comp case; an ensemble would supply one
-estimate per member (not supported yet -- see transform_report).
+transformed differentially against one comp star at a time. It's linear, so for a
+VPhot ensemble -- an unweighted average of its comps, whose average instrumental and
+catalog magnitudes the report carries as CMAGINS/CREFMAG -- transforming against that
+average comp gives the same result as transforming against each comp and averaging.
+So transform_report treats every report as single-comp. comp_estimates does the
+per-comp version, from the General Report, for the spread across comps.
 
 Verified against TA 2.71 output for three real sessions (SN 2026aaiv, CY Aqr,
 YZ Boo; tests/test_transform.py): MAG, MERR and KMAGTRAN are identical on ~98% of
@@ -37,6 +40,11 @@ from aavso_viewer.transform.coefficients import TransformCoefficients
 # be paired into one transform group. Normal cycles are a minute or two apart; this
 # only stops a frame from being paired across a long gap.
 _PAIR_TOLERANCE_DAYS = 0.01
+
+# A General Report row and the AAVSO report row for the same exposure carry JDs
+# computed independently that can differ by a few 1e-5 d (~8.6 s; same tolerance as
+# Session's General Report join).
+_GENERAL_JOIN_TOLERANCE_DAYS = 0.0001
 
 
 @dataclass(frozen=True)
@@ -136,16 +144,43 @@ class TransformError(ValueError):
     pass
 
 
-def _nearest(times: np.ndarray, index: np.ndarray, t: float) -> int | None:
+def _nearest(times: np.ndarray, index: np.ndarray, t: float, tolerance: float = _PAIR_TOLERANCE_DAYS) -> int | None:
     """Row index of the frame nearest time t (earlier wins a tie), within tolerance."""
     pos = np.searchsorted(times, t)
     best = None
     for p in (pos - 1, pos):
         if 0 <= p < len(times) and (best is None or abs(times[p] - t) < abs(times[best] - t)):
             best = p
-    if best is None or abs(times[best] - t) > _PAIR_TOLERANCE_DAYS:
+    if best is None or abs(times[best] - t) > tolerance:
         return None
     return int(index[best])
+
+
+def _sorted_by_filter(df: pd.DataFrame, filters, filter_col: str, date_col: str) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    result = {}
+    for filt in filters:
+        sub = df.loc[df[filter_col] == filt].sort_values(date_col, kind="stable")
+        result[filt] = (sub[date_col].to_numpy(), sub.index.to_numpy())
+    return result
+
+
+def _pair_frames(df: pd.DataFrame, rules: dict[str, FilterRule]) -> tuple[dict, dict]:
+    """For each row: {filter: partner row index or None} over the filters its
+    transform needs (the row itself for its own filter). Also one GROUP id per cycle,
+    numbered by the first filter's frames (B for BVR/BV), keyed by that frame's index."""
+    by_filter = _sorted_by_filter(df, rules, "FILT", "DATE")
+    lead = next(iter(rules))
+    group_of = {idx: f"{n + 1:04d}" for n, idx in enumerate(by_filter[lead][1])}
+    partners_of = {}
+    for j, row in df.iterrows():
+        filt = row["FILT"]
+        if filt not in rules:
+            partners_of[j] = None
+            continue
+        partners_of[j] = {
+            f: (j if f == filt else _nearest(*by_filter[f], row["DATE"])) for f in _needs(filt, rules)
+        }
+    return partners_of, group_of
 
 
 def _check_delta(row: pd.Series) -> float:
@@ -167,11 +202,6 @@ def untransformable_reason(report: AavsoReport) -> str | None:
     """Why this report can't be transformed, or None if it can."""
     if report.is_transformed:
         return "This report is already transformed."
-    if report.is_ensemble:
-        return (
-            "Transforming an ensemble report isn't supported yet -- it needs a "
-            "multi-filter ensemble session to build and verify against."
-        )
     if transform_set(report.filters) is None:
         return (
             f"No transform set for filters {', '.join(report.filters)} -- "
@@ -180,28 +210,44 @@ def untransformable_reason(report: AavsoReport) -> str | None:
     return None
 
 
+def ensemble_membership_problem(general: pd.DataFrame, comps: list[str], filters: list[str]) -> str | None:
+    """VPhot averages, per filter, whichever comps it measured in that filter. If a
+    comp is missing from some filters, the 'average comp' is a different set of stars
+    in each, its color is meaningless, and the transform would be wrong."""
+    measured = {
+        comp: {f for f in filters if general.loc[general["Filter"] == f, comp].notna().any()}
+        for comp in comps
+        if comp in general.columns
+    }
+    partial = {c: sorted(set(filters) - fs) for c, fs in measured.items() if fs and fs != set(filters)}
+    if not partial:
+        return None
+    detail = "; ".join(f"{c} has no {'/'.join(m)}" for c, m in partial.items())
+    return (
+        f"The ensemble's comparison stars aren't all measured in every filter ({detail}), so it "
+        "can't be transformed as one average comp. Re-run the ensemble in VPhot with comps that "
+        "have catalog magnitudes in all filters."
+    )
+
+
 def transform_report(
     report: AavsoReport,
     coeffs: TransformCoefficients,
     auids: dict[str, str] | None = None,
+    ensemble_members: list[str] | None = None,
 ) -> TransformResult:
-    """Transform every frame of an untransformed single-comp report. `auids` maps
-    chart labels to AUIDs (as TA does for CNAME/KNAME); labels are kept if absent."""
+    """Transform every frame of an untransformed report (single comp, or an ensemble
+    as its average comp). `auids` maps chart labels to AUIDs (as TA does for
+    CNAME/KNAME); labels are kept if absent. `ensemble_members` (comp labels, known
+    only from the General Report) is listed in NOTES, as AAVSO asks for ensembles."""
     reason = untransformable_reason(report)
     if reason:
         raise TransformError(reason)
     set_name, rules = transform_set(report.filters)
     df = report.df
     auids = auids or {}
-
-    by_filter = {}
-    for filt in rules:
-        sub = df.loc[df["FILT"] == filt].sort_values("DATE", kind="stable")
-        by_filter[filt] = (sub["DATE"].to_numpy(), sub.index.to_numpy())
-
-    # One GROUP per cycle, numbered by the first filter's frames (B for BVR/BV).
+    partners_of, group_of = _pair_frames(df, rules)
     lead = next(iter(rules))
-    group_of = {idx: f"{n + 1:04d}" for n, idx in enumerate(by_filter[lead][1])}
 
     out = df[STANDARD_COLUMNS].copy()
     out[ROW_COMMENTS_COLUMN] = [None] * len(out)
@@ -209,7 +255,7 @@ def transform_report(
     transformed = 0
     for j, row in df.iterrows():
         filt = row["FILT"]
-        partners = {f: (j if f == filt else _nearest(*by_filter[f], row["DATE"])) for f in _needs(filt, rules)}
+        partners = partners_of[j]
         missing = sorted(f for f, p in partners.items() if p is None)
         when = f"{filt} @ {row['DATE']:.6f}"
         if missing:
@@ -239,6 +285,8 @@ def transform_report(
         notes[coef] = _fmt(coeffs.value(coef), 4)
         if coeffs.error(coef) is not None:
             notes[f"{coef}Err"] = _fmt(coeffs.error(coef), 4)
+        if report.is_ensemble and ensemble_members:
+            notes["ENSCOMPS"] = ";".join(ensemble_members)
 
         out.at[j, "MAG"] = round(mag, 3)
         out.at[j, "MERR"] = round(merr, 3)
@@ -246,6 +294,10 @@ def transform_report(
         out.at[j, "GROUP"] = group_of[partners[lead]]
         out.at[j, "CNAME"] = auids.get(str(row["CNAME"]), row["CNAME"])
         out.at[j, "KNAME"] = auids.get(str(row["KNAME"]), row["KNAME"])
+        if report.is_ensemble and not np.isnan(kmag):
+            # An ensemble report's KMAG is the check star's calculated magnitude, not
+            # an instrumental one (AAVSO Extended format spec).
+            out.at[j, "KMAG"] = round(kmag, 3)
         out.at[j, "NOTES"] = "|" + "|".join(f"{k}={notes[k]}" for k in sorted(notes))
         using = ", ".join(f"{f} @ {df.at[partners[f], 'DATE']:.6f}" for f in rules if f in partners)
         out.at[j, ROW_COMMENTS_COLUMN] = [
@@ -258,3 +310,53 @@ def transform_report(
     comments += coeffs.header_lines()
     new_report = report_from_frame(out, header=report.header, comments=comments, source_path=report.source_path)
     return TransformResult(new_report, set_name, transformed, skipped)
+
+
+def comp_estimates(
+    report: AavsoReport,
+    general: pd.DataFrame,
+    comps: list[str],
+    catalog: dict[str, dict[str, object]],
+    coeffs: TransformCoefficients | None = None,
+) -> pd.DataFrame:
+    """For each frame of an (untransformed) ensemble report, the target's magnitude
+    estimated against each comp separately -- transformed with `coeffs` when given --
+    summarized as columns n (comps used), mean and std (ddof=1), indexed like
+    report.df. `catalog` is {label: {filter: ChartMag}} (Session.chart_photometry()).
+
+    Each comp's General Report column is its magnitude measured against the whole
+    ensemble, so target - comp is their instrumental difference (the shared zero
+    point cancels). A comp is used for a frame only if it has a measurement and a
+    catalog magnitude in every filter that frame's transform needs."""
+    df = report.df
+    target = report.star_name
+    if target not in general.columns:
+        raise ValueError(f"The General Report has no column for {target}.")
+    rules = transform_set(report.filters)[1] if coeffs is not None else None
+    partners_of = _pair_frames(df, rules)[0] if rules else {j: {f: j} for j, f in df["FILT"].items()}
+    general_rows = _sorted_by_filter(general, report.filters, "Filter", "JD")
+
+    stats = {}
+    for j, partners in partners_of.items():
+        stats[j] = (0, np.nan, np.nan)
+        if not partners or any(p is None for p in partners.values()):
+            continue
+        g = {}
+        for f, p in partners.items():
+            k = _nearest(*general_rows[f], df.at[p, "DATE"], _GENERAL_JOIN_TOLERANCE_DAYS)
+            if k is None:
+                break
+            g[f] = general.loc[k]
+        else:
+            used = [
+                c for c in comps
+                if all(pd.notna(g[f].get(c)) and f in catalog.get(c, {}) for f in partners)
+            ]
+            if not used:
+                continue
+            d = {f: np.array([g[f][target] - g[f][c] for c in used]) for f in partners}
+            cat = {f: np.array([catalog[c][f].mag for c in used]) for f in partners}
+            filt = df.at[j, "FILT"]
+            est = _standard_mag(filt, rules, d, cat, coeffs) if rules else cat[filt] + d[filt]
+            stats[j] = (len(used), float(np.mean(est)), float(np.std(est, ddof=1)) if len(used) > 1 else np.nan)
+    return pd.DataFrame.from_dict(stats, orient="index", columns=["n", "mean", "std"]).reindex(df.index)

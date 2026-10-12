@@ -100,6 +100,6 @@ def test_snr_path_keeps_frames_and_round_trips(tmp_path):
     assert len(again.df) == len(ta.df) and again.is_transformed
 
 
-def test_comp_spread_not_supported_yet():
-    with pytest.raises(SubmissionError, match="aren't supported yet"):
+def test_comp_spread_needs_the_spread():
+    with pytest.raises(SubmissionError, match="hasn't been computed"):
         build_submission(_sn_ta(), ErrorMethod.COMP_SPREAD)

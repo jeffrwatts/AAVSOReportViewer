@@ -117,9 +117,6 @@ def test_transform_rejects_unsupported_reports():
     with pytest.raises(TransformError, match="No transform set"):
         transform_report(v_only, coeffs)
 
-    ensemble = parse_aavso_report(FIXTURES / "AAVSOReport_YZ-Boo_Ensemble_Synthetic.txt")
-    with pytest.raises(TransformError, match="ensemble"):
-        transform_report(ensemble, coeffs)
 
 
 def test_frame_without_partner_is_left_untransformed():

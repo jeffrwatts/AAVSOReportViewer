@@ -55,6 +55,27 @@ class ErrorMethod(str, Enum):
         }[self]
 
 
+class SpreadMode(str, Enum):
+    """How the spread of per-comp target estimates becomes MERR (ensemble light
+    curves). The course's wording allows either reading, so it's a setting until an
+    AAVSO mentor confirms which is intended."""
+
+    STD = "STD"
+    SDOM = "SDOM"
+
+    @property
+    def label(self) -> str:
+        return {
+            SpreadMode.STD: "Standard deviation across the comps (more conservative)",
+            SpreadMode.SDOM: "Standard deviation of the mean (Std / √N comps)",
+        }[self]
+
+
+# Per-comp estimates averaged should reproduce the report's own magnitude; a bigger
+# gap means the General Report or catalog doesn't match the ensemble VPhot used.
+_CONSISTENCY_LIMIT = 0.005
+
+
 def choose_method(combine: bool, target_varies: bool | None, is_ensemble: bool) -> ErrorMethod:
     if combine:
         if target_varies is None:
@@ -168,26 +189,62 @@ def _combine(report: AavsoReport, method: ErrorMethod) -> tuple[pd.DataFrame, li
     return pd.DataFrame(rows_out), warnings
 
 
-def build_submission(report: AavsoReport, method: ErrorMethod) -> Submission:
+def _per_frame(
+    report: AavsoReport, method: ErrorMethod, comp_spread: pd.DataFrame | None, spread_mode: SpreadMode
+) -> tuple[pd.DataFrame, list[str]]:
+    out = report.df[[c for c in [*STANDARD_COLUMNS, ROW_COMMENTS_COLUMN] if c in report.df.columns]].copy()
+    extra = {j: {"MERRMETHOD": method.value} for j in out.index}
+    warnings: list[str] = []
     if method == ErrorMethod.COMP_SPREAD:
-        raise SubmissionError(
-            "Ensemble light curves (MERR from the comparison-star spread) aren't supported yet."
-        )
+        if comp_spread is None:
+            raise SubmissionError("The comparison-star spread hasn't been computed for this session.")
+        spread = comp_spread.reindex(out.index)
+        short = int((spread["n"].fillna(0) < 2).sum())
+        if short:
+            raise SubmissionError(
+                f"{short} frame(s) have fewer than 2 comparison stars measured -- no spread to report."
+            )
+        sigma = spread["std"] / (np.sqrt(spread["n"]) if spread_mode == SpreadMode.SDOM else 1.0)
+        out["MERR"] = np.hypot(sigma, out["MERR"]).round(3)
+        for j in out.index:
+            extra[j].update(
+                COMPSPREAD=spread_mode.value, NCOMP=str(int(spread.at[j, "n"])), COMPSTD=f"{spread.at[j, 'std']:.3f}"
+            )
+        gap = (spread["mean"] - report.df["MAG"]).abs()
+        if (gap > _CONSISTENCY_LIMIT).any():
+            warnings.append(
+                f"On {int((gap > _CONSISTENCY_LIMIT).sum())} frame(s) the per-comp estimates average up to "
+                f"{gap.max():.3f} mag away from the report's magnitude -- the General Report or catalog may "
+                "not match the ensemble VPhot used."
+            )
+    out["NOTES"] = [
+        "|" + "|".join(f"{k}={v}" for k, v in {**_parse_notes(n), **extra[j]}.items())
+        for j, n in out["NOTES"].items()
+    ]
+    return out, warnings
+
+
+def build_submission(
+    report: AavsoReport,
+    method: ErrorMethod,
+    comp_spread: pd.DataFrame | None = None,
+    spread_mode: SpreadMode = SpreadMode.STD,
+) -> Submission:
+    """`comp_spread` (Session.comp_spread, indexed like report.df) is required for
+    ErrorMethod.COMP_SPREAD and ignored otherwise."""
     if method in (ErrorMethod.STD_TARGET, ErrorMethod.STD_CHECK):
         out, warnings = _combine(report, method)
     else:
-        warnings = []
-        out = report.df[[c for c in [*STANDARD_COLUMNS, ROW_COMMENTS_COLUMN] if c in report.df.columns]].copy()
-        out["NOTES"] = [
-            "|" + "|".join(f"{k}={v}" for k, v in {**_parse_notes(n), "MERRMETHOD": method.value}.items())
-            for n in out["NOTES"]
-        ]
+        out, warnings = _per_frame(report, method, comp_spread, spread_mode)
 
     header = dict(report.header)
     original = header.get("SOFTWARE")
     ours = f"AAVSO Report Viewer {app_version()}"
     header["SOFTWARE"] = f"{original} + {ours}" if original else ours
-    comments = [*report.comments, f"#  {ours}: {method.description}"]
+    description = method.description
+    if method == ErrorMethod.COMP_SPREAD:
+        description += f" Spread: {spread_mode.label}."
+    comments = [*report.comments, f"#  {ours}: {description}"]
     return Submission(
         report_from_frame(out, header=header, comments=comments, source_path=report.source_path),
         method,

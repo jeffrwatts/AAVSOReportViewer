@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QFileDialog,
     QHeaderView,
@@ -27,6 +28,7 @@ from aavso_viewer.parsing.aavso_writer import format_report, write_aavso_report
 from aavso_viewer.submission.builder import (
     CHECK_MAG_LIMIT,
     ErrorMethod,
+    SpreadMode,
     Submission,
     SubmissionError,
     build_submission,
@@ -34,6 +36,9 @@ from aavso_viewer.submission.builder import (
 )
 from aavso_viewer.transform.engine import untransformable_reason
 from aavso_viewer.ui import coloring
+from aavso_viewer.ui.transform_dialog import settings
+
+SPREAD_MODE_KEY = "submission/comp_spread_mode"
 
 PAGE_SOURCE, PAGE_COMBINE, PAGE_VARIES, PAGE_LIGHT_CURVE, PAGE_PREVIEW = range(5)
 
@@ -191,18 +196,66 @@ class _LightCurvePage(QWizardPage):
         layout = QVBoxLayout(self)
         self.text = _wrapped("")
         layout.addWidget(self.text)
+        self.spread_question = _wrapped(
+            "How should the spread across the comparison stars become MERR? (Combined in quadrature "
+            "with the SNR uncertainty either way.) The course's wording allows either -- worth confirming "
+            "with your mentor."
+        )
+        layout.addWidget(self.spread_question)
+        self.spread_choice = _choice(self, layout, [mode.label for mode in SpreadMode])
+        try:
+            saved = SpreadMode(settings().value(SPREAD_MODE_KEY, SpreadMode.STD.value, type=str))
+        except ValueError:
+            saved = SpreadMode.STD
+        self.spread_choice.button(list(SpreadMode).index(saved)).setChecked(True)
+        self.spread_table = _read_only_table(["Filter", "Comps", "Median spread (Std)", "Median MERR (SNR)"])
+        layout.addWidget(self.spread_table)
+        self.problem = _wrapped("")
+        self.problem.setStyleSheet(f"color: {coloring.FLAG.name()};")
+        layout.addWidget(self.problem)
         layout.addStretch()
 
     def initializePage(self):
         method = self._wizard.method()
-        text = "The target is assumed bright (well above sky, read and dark noise). " + method.description
-        if method == ErrorMethod.COMP_SPREAD:
-            text += "\n\nThis isn't supported yet -- ensemble light curves are still to be built."
-        self.text.setText(text)
+        self.text.setText("The target is assumed bright (well above sky, read and dark noise). " + method.description)
+        ensemble = method == ErrorMethod.COMP_SPREAD
+        for widget in (self.spread_question, self.spread_table, *self.spread_choice.buttons()):
+            widget.setVisible(ensemble)
+        self.problem.clear()
+        if ensemble:
+            self._wizard.spread = None
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                self._wizard.spread = self._wizard.session.comp_spread(self._wizard.source_page.use_transformed())
+            except ValueError as exc:
+                self.problem.setText(str(exc))
+            finally:
+                QApplication.restoreOverrideCursor()
+            self._fill_spread_table()
         self.completeChanged.emit()
 
+    def _fill_spread_table(self):
+        spread = self._wizard.spread
+        report = self._wizard.source_report()
+        self.spread_table.setRowCount(0 if spread is None else len(report.filters))
+        if spread is None:
+            return
+        df = report.df
+        for r, filt in enumerate(report.filters):
+            rows = df["FILT"] == filt
+            comps = sorted({int(n) for n in spread.loc[rows, "n"].dropna()})
+            _set_cell(self.spread_table, r, 0, filt)
+            _set_cell(self.spread_table, r, 1, "/".join(map(str, comps)) or "0")
+            _set_cell(self.spread_table, r, 2, f"{spread.loc[rows, 'std'].median():.3f}")
+            _set_cell(self.spread_table, r, 3, f"{df.loc[rows, 'MERR'].median():.3f}")
+
+    def spread_mode(self) -> SpreadMode:
+        mode = list(SpreadMode)[max(self.spread_choice.checkedId(), 0)]
+        settings().setValue(SPREAD_MODE_KEY, mode.value)
+        return mode
+
     def isComplete(self):
-        return self._wizard.method() != ErrorMethod.COMP_SPREAD
+        return self._wizard.method() != ErrorMethod.COMP_SPREAD or self._wizard.spread is not None
 
 
 class _PreviewPage(QWizardPage):
@@ -234,7 +287,12 @@ class _PreviewPage(QWizardPage):
         self.notes.clear()
         method = self._wizard.method()
         try:
-            self.submission = build_submission(self._wizard.source_report(), method)
+            self.submission = build_submission(
+                self._wizard.source_report(),
+                method,
+                comp_spread=self._wizard.spread,
+                spread_mode=self._wizard.light_curve_page.spread_mode(),
+            )
             format_report(self.submission.report)  # surface any field-validation error now, not at save
         except (SubmissionError, ValueError) as exc:
             self.submission = None
@@ -271,6 +329,8 @@ class SubmissionWizard(QWizard):
         self.setMinimumSize(760, 560)
         self.setOption(QWizard.NoBackButtonOnLastPage, False)
         self.setButtonText(QWizard.FinishButton, "Save…")
+        self.spread = None
+        """Per-frame comp spread (Session.comp_spread) for an ensemble light curve."""
         self.source_page = _SourcePage(session)
         self.combine_page = _CombinePage(self)
         self.varies_page = _VariesPage(self)

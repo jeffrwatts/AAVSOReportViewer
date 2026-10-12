@@ -222,8 +222,8 @@ class MainWindow(QMainWindow):
         share_plot_action.triggered.connect(self._open_share_plot)
 
     def _open_report_set(self) -> None:
-        """Load a whole new session (AAVSO Report + optional General Report) via the
-        same dialog shown at startup, without needing to restart the app."""
+        """Load a whole new session (AAVSO Report + optional Transformed/General
+        Report) via the same dialog shown at startup, without needing to restart the app."""
         dialog = StartupDialog(self)
         if dialog.exec() != QDialog.Accepted:
             return
@@ -231,10 +231,14 @@ class MainWindow(QMainWindow):
             report = parse_aavso_report(dialog.aavso_report_path())
             general_path = dialog.general_report_path()
             general = parse_general_report(general_path) if general_path else None
+            transformed_path = dialog.transformed_report_path()
+            after = parse_aavso_report(transformed_path) if transformed_path else None
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Failed to load report set", str(exc))
             return
         self.session = Session(report, general)
+        if after is not None:
+            self.session.attach_after_report(after, source=Path(transformed_path).name)
         self._refresh_all()
 
     def _open_aavso_report(self) -> None:

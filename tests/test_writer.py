@@ -71,3 +71,33 @@ def test_writer_rejects_invalid_fields(tmp_path):
     report.df.loc[0, "MERR"] = 1234.5
     with pytest.raises(ValueError, match="MERR is longer than 6"):
         format_report(report)
+
+
+def test_ta_header_comments_kept_and_carried_into_submission(tmp_path):
+    from aavso_viewer.submission.builder import ErrorMethod, build_submission
+
+    ta = parse_aavso_report(FIXTURES / "AAVSOReport_SN-2026aaiv_BVR_20261011_TA.txt")
+    assert ta.comments[0] == "#  TransformApplier, V2.71"
+    assert "#Tb_bv= 0.3360, +/- 0.0100" in ta.comments
+    assert not any(c.startswith("#SN 2026aaiv,") for c in ta.comments)  # TA's commented-out original rows
+
+    out = tmp_path / "submit.txt"
+    write_aavso_report(build_submission(ta, ErrorMethod.STD_TARGET).report, out)
+    text = out.read_text()
+    assert "#  TransformApplier, V2.71" in text and "#Tbv= 1.5830, +/- 0.0170" in text
+
+
+def test_untransformed_vphot_report_has_no_header_comments():
+    assert parse_aavso_report(FIXTURES / "AAVSOReport_SN-2026aaiv_BVR_20261011.txt").comments == []
+
+
+def test_ta_report_found_next_to_report(tmp_path):
+    from aavso_viewer.ui.startup_dialog import ta_report_for
+
+    report = tmp_path / "AAVSOReport_X_BVR_20261011.txt"
+    report.write_text("")
+    assert ta_report_for(str(report)) is None
+    ta = tmp_path / "AAVSOReport_X_BVR_20261011_TA.txt"
+    ta.write_text("")
+    assert ta_report_for(str(report)) == ta
+    assert ta_report_for("") is None

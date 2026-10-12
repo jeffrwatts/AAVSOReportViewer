@@ -64,11 +64,20 @@ class TransformDialog(QDialog):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         layout.addWidget(self.table)
 
+        comps = "an ensemble (transformed as its average comp)" if session.is_ensemble else "a single comparison star"
         plan = QLabel(
-            f"{session.star_name}: filters {', '.join(session.filters)}, single comparison star "
+            f"{session.star_name}: filters {', '.join(session.filters)}, {comps} "
             f"→ {set_name} set (coefficients in bold)\n" + "\n".join(describe_set(self._rules))
         )
         layout.addWidget(plan)
+        if session.is_ensemble and not session.has_general_report:
+            note = QLabel(
+                "Without the General Report the app can't confirm every comparison star was measured "
+                "in every filter, or list the ensemble's members in NOTES."
+            )
+            note.setWordWrap(True)
+            note.setStyleSheet("color: gray; font-size: 11px;")
+            layout.addWidget(note)
 
         self.auid_check = QCheckBox("Name comp/check stars by AUID (looks up the chart online, like TA)")
         self.auid_check.setChecked(True)

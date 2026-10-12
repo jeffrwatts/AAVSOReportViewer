@@ -15,7 +15,13 @@ from aavso_viewer.parsing.chart_photometry import ChartMag, fetch_chart_auids, f
 from aavso_viewer.parsing.general_report import GeneralReport
 from aavso_viewer.parsing.vsx import fetch_vsx_range
 from aavso_viewer.transform.coefficients import TransformCoefficients
-from aavso_viewer.transform.engine import TransformResult, transform_report
+from aavso_viewer.transform.engine import (
+    TransformError,
+    TransformResult,
+    comp_estimates,
+    ensemble_membership_problem,
+    transform_report,
+)
 
 # General Report <-> AAVSO report timestamps are computed independently and can differ
 # by a few 1e-5 days even for the same exposure -- nearest-within-tolerance join is
@@ -163,6 +169,9 @@ class Session:
         self.after_source: str | None = None
         """Where the after report came from, for display -- a file name, or the
         coefficient file when the transform was applied in-app."""
+        self.after_coeffs: TransformCoefficients | None = None
+        """The coefficients behind `after` when it was transformed in-app (None for a
+        loaded file) -- needed to transform per-comp estimates the same way."""
         self._merged: pd.DataFrame | None = None
         self._chart_photometry: dict[str, dict[str, ChartMag]] | None = None
         self._chart_fetch_attempted = False
@@ -182,6 +191,7 @@ class Session:
         physical star."""
         self.after = after
         self.after_source = source
+        self.after_coeffs = None
 
     def apply_transform(self, coeffs: TransformCoefficients, lookup_auids: bool = True) -> TransformResult:
         """Transform this session's report in-app and attach the result as the after
@@ -192,13 +202,48 @@ class Session:
                 auids = fetch_chart_auids(self.chart_id)
             except Exception:  # noqa: BLE001 -- optional online enhancement; labels are valid too
                 auids = None
-        result = transform_report(self.aavso, coeffs, auids)
+        members = None
+        if self.is_ensemble and self.general is not None:
+            members = self.comp_star_names()
+            problem = ensemble_membership_problem(self.general.df, members, self.filters)
+            if problem:
+                raise TransformError(problem)
+        result = transform_report(self.aavso, coeffs, auids, ensemble_members=members)
         self.attach_after_report(result.report, source=f"transformed in app with {coeffs.source}")
+        self.after_coeffs = coeffs
         return result
 
     def clear_transform(self) -> None:
         self.after = None
         self.after_source = None
+        self.after_coeffs = None
+
+    def comp_spread(self, transformed: bool) -> pd.DataFrame:
+        """Per frame of an ensemble session: the target estimated against each comp
+        separately (n, mean, std -- see transform.engine.comp_estimates), transformed
+        the same way as `after` when `transformed`. Raises ValueError explaining what's
+        missing -- the General Report, or the comps' catalog magnitudes (online)."""
+        if not self.is_ensemble:
+            raise ValueError("Only an ensemble session has a spread across comparison stars.")
+        if self.general is None:
+            raise ValueError(
+                "This needs VPhot's General Report for the session (File → Open General Report…) -- "
+                "only it has each comparison star's magnitude per frame."
+            )
+        if self._chart_photometry is None:
+            self._chart_fetch_attempted = False  # retry: the last attempt may have been a transient failure
+        catalog = self.chart_photometry()
+        if not catalog:
+            raise ValueError(
+                "Couldn't get the comparison stars' catalog magnitudes from AAVSO's chart service "
+                f"(chart {self.chart_id or 'unknown'}) -- check the network connection and try again."
+            )
+        coeffs = None
+        if transformed:
+            if self.after_coeffs is None:
+                raise ValueError("The transformed report wasn't produced in this app, so its per-comp spread can't be computed.")
+            coeffs = self.after_coeffs
+        return comp_estimates(self.aavso, self.general.df, self.comp_star_names(), catalog, coeffs)
 
     @property
     def has_general_report(self) -> bool:
