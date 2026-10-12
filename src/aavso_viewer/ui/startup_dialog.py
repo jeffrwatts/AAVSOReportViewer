@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -40,15 +38,6 @@ class _FilePickerRow:
         return self.edit.text().strip()
 
 
-def ta_report_for(aavso_path: str) -> Path | None:
-    """TransformApplier's output sitting next to a report, named <report>_TA.txt."""
-    path = Path(aavso_path)
-    if not path.stem:
-        return None
-    candidate = path.with_name(f"{path.stem}_TA{path.suffix}")
-    return candidate if candidate.is_file() else None
-
-
 class StartupDialog(QDialog):
     """Startup dialog: AAVSO Report (required), Transformed Report (optional --
     TransformApplier's output; leave it empty to transform in the app via the
@@ -76,7 +65,6 @@ class StartupDialog(QDialog):
             "TransformApplier's _TA report for this session, for the before/after comparison "
             "and the submission report. Leave empty to transform in the app (Transform menu).",
         )
-        self.aavso_row.edit.textChanged.connect(self._fill_ta_report)
         self.general_row = _FilePickerRow(
             grid,
             4,
@@ -100,12 +88,6 @@ class StartupDialog(QDialog):
 
     def aavso_report_path(self) -> str:
         return self.aavso_row.path()
-
-    def _fill_ta_report(self, aavso_path: str) -> None:
-        if not self.transformed_row.path():
-            ta = ta_report_for(aavso_path.strip())
-            if ta is not None:
-                self.transformed_row.edit.setText(str(ta))
 
     def transformed_report_path(self) -> str | None:
         return self.transformed_row.path() or None
