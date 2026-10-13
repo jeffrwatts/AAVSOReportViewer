@@ -128,3 +128,52 @@ def test_frame_without_partner_is_left_untransformed():
     assert result.transformed == len(df) - 1
     assert len(result.skipped) == 1 and "no B/V frame" in result.skipped[0]
     assert result.report.df.loc[lone_r, "TRANS"] == "NO"
+
+
+def test_coefficient_sensitivity_sn_2026aaiv():
+    """Mentor's suggested check: move each coefficient by its error. For SN 2026aaiv
+    with the VIS coefficients it's ~0.003-0.004 per filter, well under the target's
+    scatter, and each filter is driven by its own color coefficient."""
+    from aavso_viewer.transform.engine import coefficient_sensitivity
+
+    raw = parse_aavso_report(FIXTURES / "AAVSOReport_SN-2026aaiv_BVR_20261011.txt")
+    result = coefficient_sensitivity(raw, parse_tg_ini(FIXTURES / "SA114-VIS.ini"))
+
+    assert set(result) == {"B", "V", "R"}
+    assert result["B"].total == pytest.approx(0.0034, abs=0.0002)
+    assert result["V"].total == pytest.approx(0.0036, abs=0.0002)
+    assert result["R"].total == pytest.approx(0.0037, abs=0.0002)
+    assert max(result["B"].terms, key=result["B"].terms.get) == "Tb_bv"
+    assert max(result["V"].terms, key=result["V"].terms.get) == "Tv_bv"
+    assert result["B"].terms["Tv_bv"] == 0  # B doesn't use V's coefficient
+    for s in result.values():
+        assert s.total == pytest.approx(np.sqrt(sum(t**2 for t in s.terms.values())))
+
+
+@pytest.mark.parametrize("name", SESSIONS[1:])
+def test_session_coefficient_sensitivity_from_ta_header(name):
+    """A loaded TA report supplies its coefficients through its header. For the bright
+    light curves (CY Aqr, YZ Boo) the systematic exceeds the SNR-based MERR."""
+    from aavso_viewer.models.session import Session
+
+    session = Session(parse_aavso_report(FIXTURES / f"{name}.txt"))
+    with pytest.raises(ValueError):
+        session.coefficient_sensitivity()
+    session.attach_after_report(parse_aavso_report(FIXTURES / f"{name}_TA.txt"))
+    result = session.coefficient_sensitivity()
+    after = session.after.df
+    merr = after.groupby("FILT")["MERR"].median()
+
+    assert set(result) == {"B", "V", "R"}
+    for filt, s in result.items():
+        assert 0.007 < s.total < 0.012
+        assert s.total > merr[filt]
+
+
+def test_coefficient_sensitivity_needs_errors():
+    from aavso_viewer.transform.coefficients import TransformCoefficients
+    from aavso_viewer.transform.engine import coefficient_sensitivity
+
+    raw = parse_aavso_report(FIXTURES / "AAVSOReport_SN-2026aaiv_BVR_20261011.txt")
+    coeffs = parse_tg_ini(FIXTURES / "SA114-VIS.ini")
+    assert coefficient_sensitivity(raw, TransformCoefficients(coeffs.values)) == {}

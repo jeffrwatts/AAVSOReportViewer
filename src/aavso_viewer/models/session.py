@@ -14,13 +14,16 @@ from aavso_viewer.parsing.aavso_report import AavsoReport
 from aavso_viewer.parsing.chart_photometry import ChartMag, fetch_chart_auids, fetch_chart_photometry
 from aavso_viewer.parsing.general_report import GeneralReport
 from aavso_viewer.parsing.vsx import fetch_vsx_range
-from aavso_viewer.transform.coefficients import TransformCoefficients
+from aavso_viewer.transform.coefficients import TransformCoefficients, parse_report_header
 from aavso_viewer.transform.engine import (
+    CoefficientSensitivity,
     TransformError,
     TransformResult,
+    coefficient_sensitivity,
     comp_estimates,
     ensemble_membership_problem,
     transform_report,
+    untransformable_reason,
 )
 
 # General Report <-> AAVSO report timestamps are computed independently and can differ
@@ -244,6 +247,27 @@ class Session:
                 raise ValueError("The transformed report wasn't produced in this app, so its per-comp spread can't be computed.")
             coeffs = self.after_coeffs
         return comp_estimates(self.aavso, self.general.df, self.comp_star_names(), catalog, coeffs)
+
+    def coefficient_sensitivity(self) -> dict[str, CoefficientSensitivity]:
+        """Per filter, how much the after report's target magnitudes depend on the
+        transform coefficients' errors (transform.engine.coefficient_sensitivity).
+        Uses the in-app coefficients, or those a TransformApplier report echoes in its
+        header. Raises ValueError saying why it can't be computed."""
+        if self.after is None:
+            raise ValueError("No transformed report is loaded.")
+        reason = untransformable_reason(self.aavso)
+        if reason:
+            raise ValueError(reason)
+        coeffs = self.after_coeffs
+        if coeffs is None:
+            try:
+                coeffs = parse_report_header(self.after.source_path)
+            except (TypeError, ValueError, OSError):
+                raise ValueError("The transformed report doesn't list the coefficients it was made with.") from None
+        result = coefficient_sensitivity(self.aavso, coeffs)
+        if not result:
+            raise ValueError(f"{coeffs.source or 'The coefficients'} has no coefficient errors.")
+        return result
 
     @property
     def has_general_report(self) -> bool:

@@ -279,12 +279,21 @@ class _PreviewPage(QWizardPage):
         self.notes.setReadOnly(True)
         self.notes.setMaximumHeight(70)
         layout.addWidget(self.notes)
+        # How much the transformed magnitudes depend on the transform coefficients'
+        # own errors, judged against the MERR being submitted. It's a systematic
+        # uncertainty, so it's shown for reference and not added to MERR.
+        self.coeff_label = QLabel("Transform coefficient uncertainty (not included in MERR)")
+        layout.addWidget(self.coeff_label)
+        self.coeff_table = _read_only_table(["Filter", "MERR", "Coeff ±"])
+        layout.addWidget(self.coeff_table)
         self.submission: Submission | None = None
 
     def initializePage(self):
         self.submission = None
         self.table.setRowCount(0)
         self.notes.clear()
+        self.coeff_label.hide()
+        self.coeff_table.hide()
         method = self._wizard.method()
         try:
             self.submission = build_submission(
@@ -310,7 +319,44 @@ class _PreviewPage(QWizardPage):
                 fmt = _PREVIEW_FORMATS.get(column)
                 _set_cell(self.table, r, c, fmt.format(value) if fmt and value == value else str(value))
         self.table.selectRow(0)
+        self._fill_coeff_table()
         self.completeChanged.emit()
+
+    def _fill_coeff_table(self):
+        sensitivity = None
+        if self._wizard.source_page.use_transformed():
+            try:
+                sensitivity = self._wizard.session.coefficient_sensitivity()
+            except ValueError:
+                sensitivity = None
+        self.coeff_label.setVisible(bool(sensitivity))
+        self.coeff_table.setVisible(bool(sensitivity))
+        if not sensitivity:
+            return
+        # One MERR per filter for a combined point; a light curve's vary by frame.
+        merr = self.submission.report.df.groupby("FILT")["MERR"].median()
+        light_curve = not self._wizard.combine_page.combine()
+        self.coeff_table.setHorizontalHeaderLabels(["Filter", "MERR (median)" if light_curve else "MERR", "Coeff ±"])
+        filters = [f for f in self.submission.report.filters if f in sensitivity]
+        self.coeff_table.setRowCount(len(filters))
+        for r, filt in enumerate(filters):
+            s = sensitivity[filt]
+            reference = float(merr[filt]) if filt in merr else None
+            _set_cell(self.coeff_table, r, 0, filt)
+            _set_cell(self.coeff_table, r, 1, "-" if reference is None else f"{reference:.3f}")
+            item = _set_cell(self.coeff_table, r, 2, f"{s.total:.3f}")
+            # Same 1x/2x rule as the main window's Average deltas: past MERR, the
+            # coefficients' systematic error outweighs the random one.
+            color = coloring.ratio_color(s.total, reference)
+            if color is not None:
+                item.setForeground(color)
+            item.setToolTip(
+                "Shift in the mean magnitude with each coefficient moved by ± its error:\n"
+                + "\n".join(f"{name}: {shift:.4f}" for name, shift in sorted(s.terms.items(), key=lambda t: -t[1]))
+            )
+        self.coeff_table.resizeRowsToContents()
+        height = self.coeff_table.horizontalHeader().height() + 2 * self.coeff_table.frameWidth()
+        self.coeff_table.setFixedHeight(height + sum(self.coeff_table.rowHeight(r) for r in range(len(filters))))
 
     def _show_notes(self):
         rows = self.table.selectionModel().selectedRows()

@@ -235,11 +235,14 @@ def transform_report(
     coeffs: TransformCoefficients,
     auids: dict[str, str] | None = None,
     ensemble_members: list[str] | None = None,
+    rounded: bool = True,
 ) -> TransformResult:
     """Transform every frame of an untransformed report (single comp, or an ensemble
     as its average comp). `auids` maps chart labels to AUIDs (as TA does for
     CNAME/KNAME); labels are kept if absent. `ensemble_members` (comp labels, known
-    only from the General Report) is listed in NOTES, as AAVSO asks for ensembles."""
+    only from the General Report) is listed in NOTES, as AAVSO asks for ensembles.
+    `rounded=False` keeps MAG unrounded, for comparing transforms that differ by
+    less than the report's 0.001 resolution."""
     reason = untransformable_reason(report)
     if reason:
         raise TransformError(reason)
@@ -288,7 +291,7 @@ def transform_report(
         if report.is_ensemble and ensemble_members:
             notes["ENSCOMPS"] = ";".join(ensemble_members)
 
-        out.at[j, "MAG"] = round(mag, 3)
+        out.at[j, "MAG"] = round(mag, 3) if rounded else mag
         out.at[j, "MERR"] = round(merr, 3)
         out.at[j, "TRANS"] = "YES"
         out.at[j, "GROUP"] = group_of[partners[lead]]
@@ -360,3 +363,50 @@ def comp_estimates(
             est = _standard_mag(filt, rules, d, cat, coeffs) if rules else cat[filt] + d[filt]
             stats[j] = (len(used), float(np.mean(est)), float(np.std(est, ddof=1)) if len(used) > 1 else np.nan)
     return pd.DataFrame.from_dict(stats, orient="index", columns=["n", "mean", "std"]).reindex(df.index)
+
+
+@dataclass(frozen=True)
+class CoefficientSensitivity:
+    """How far one filter's transformed target magnitude moves when the transform
+    coefficients move by their own errors -- a systematic uncertainty (the same
+    coefficients bias every frame alike), so it's reported beside MERR, not in it."""
+
+    total: float
+    """The per-coefficient shifts combined in quadrature."""
+    terms: dict[str, float]
+    """Coefficient name -> |shift| of the filter's mean magnitude when that coefficient
+    alone moves by ± its error (the larger of the two directions)."""
+
+
+def coefficient_sensitivity(report: AavsoReport, coeffs: TransformCoefficients) -> dict[str, CoefficientSensitivity]:
+    """Per filter, the shift in the mean transformed target magnitude from moving each
+    coefficient the transform uses by ± its error, one at a time (the check Jeff's
+    mentor suggested). The shift scales with the target-minus-comp color, so it's
+    small for color-matched comps and grows for a red target against blue comps.
+    Coefficients with no error are skipped; empty if none have one."""
+    _, rules = transform_set(report.filters)
+    names = sorted({rule.color_coef for rule in rules.values()} | {rule.coef for rule in rules.values()})
+    names = [n for n in names if coeffs.error(n)]
+    if not names:
+        return {}
+
+    def mean_mags(c: TransformCoefficients) -> pd.Series:
+        df = transform_report(report, c, rounded=False).report.df
+        return df.loc[df["TRANS"] == "YES"].groupby("FILT")["MAG"].mean()
+
+    base = mean_mags(coeffs)
+    terms: dict[str, dict[str, float]] = {f: {} for f in base.index}
+    for name in names:
+        shifts = []
+        for sign in (1, -1):
+            values = dict(coeffs.values)
+            values[name] += sign * coeffs.error(name)
+            shifted = TransformCoefficients(values, coeffs.errors, coeffs.description, coeffs.source)
+            shifts.append((mean_mags(shifted) - base).abs())
+        biggest = pd.concat(shifts, axis=1).max(axis=1)
+        for filt in terms:
+            terms[filt][name] = float(biggest.get(filt, 0.0))
+    return {
+        filt: CoefficientSensitivity(float(np.sqrt(sum(s**2 for s in t.values()))), t)
+        for filt, t in terms.items()
+    }
