@@ -12,7 +12,7 @@ from aavso_viewer.parsing.aavso_report import parse_aavso_report
 from aavso_viewer.parsing.aavso_writer import write_aavso_report
 from aavso_viewer.parsing.chart_photometry import _BAND_TO_FILTER, ChartMag
 from aavso_viewer.parsing.general_report import parse_general_report
-from aavso_viewer.submission.builder import ErrorMethod, SpreadMode, SubmissionError, build_submission
+from aavso_viewer.submission.builder import ErrorMethod, SubmissionError, build_submission, frame_consistency
 from aavso_viewer.transform.coefficients import parse_tg_ini
 from aavso_viewer.transform.engine import TransformError, comp_estimates, transform_report
 
@@ -94,19 +94,19 @@ def test_partial_ensemble_membership_is_refused(session):
         session.apply_transform(_coeffs())
 
 
-@pytest.mark.parametrize("mode", list(SpreadMode))
-def test_comp_spread_submission(session, mode, tmp_path):
+def test_comp_spread_submission(session, tmp_path):
+    """MERR is the plain Std across the comps (Technique #3, as the mentor confirmed --
+    not Std/sqrt(N)) combined with the SNR uncertainty."""
     session.apply_transform(_coeffs())
     spread = session.comp_spread(transformed=True)
-    sub = build_submission(session.after, ErrorMethod.COMP_SPREAD, comp_spread=spread, spread_mode=mode)
+    sub = build_submission(session.after, ErrorMethod.COMP_SPREAD, comp_spread=spread)
     df = sub.report.df
     assert len(df) == len(session.after.df)
-    sigma = spread["std"] / (np.sqrt(spread["n"]) if mode == SpreadMode.SDOM else 1)
-    expected = np.hypot(sigma, session.after.df["MERR"]).round(3)
+    expected = np.hypot(spread["std"], session.after.df["MERR"]).round(3)
     assert np.allclose(df["MERR"], expected)
     assert (df["MERR"] >= session.after.df["MERR"]).all()
     assert df["NOTES"].str.contains(f"MERRMETHOD=COMP_SPREAD").all()
-    assert df["NOTES"].str.contains(f"COMPSPREAD={mode.value}").all()
+    assert not df["NOTES"].str.contains("COMPSPREAD").any()
     assert df["NOTES"].str.contains("NCOMP=2").all()
     assert sub.warnings == []
     write_aavso_report(sub.report, tmp_path / "submit.txt")
@@ -127,3 +127,16 @@ def test_comp_spread_flags_mismatched_catalog(session, monkeypatch):
     spread = Session(session.aavso, session.general).comp_spread(transformed=False)
     sub = build_submission(session.aavso, ErrorMethod.COMP_SPREAD, comp_spread=spread)
     assert sub.warnings and "may not match" in sub.warnings[0]
+
+
+def test_frame_consistency_uses_comp_spread(session):
+    """For an ensemble, a single frame's uncertainty is the comp spread combined with
+    MERR (Technique #3) -- larger than MERR alone, so the ratio drops."""
+    session.apply_transform(_coeffs())
+    spread = session.comp_spread(transformed=True)
+    with_spread = {r.filt: r for r in frame_consistency(session.after, spread)}
+    snr_only = {r.filt: r for r in frame_consistency(session.after)}
+    for filt in "BVR":
+        assert with_spread[filt].across == snr_only[filt].across
+        assert with_spread[filt].single > snr_only[filt].single
+        assert with_spread[filt].ratio < snr_only[filt].ratio

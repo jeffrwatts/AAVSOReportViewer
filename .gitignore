@@ -8,3 +8,6 @@ __pycache__/
 
 # AAVSO CHOICE course material -- copyrighted, enrollees only; never publish
 uncertainty-v8.pdf
+
+# Mentor's personal analysis spreadsheets -- shared privately; never publish
+*.xlsx

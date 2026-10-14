@@ -99,3 +99,13 @@ def improvement_color(
     if catalog_err is not None and abs(delta_after) <= catalog_err:
         return BORDERLINE
     return FLAG
+
+
+def consistency_color(ratio: float | None) -> QColor | None:
+    """The Std across frames vs the single-frame uncertainty (submission.builder.
+    frame_consistency): fine below the mentor's 1.5x, flagged at or above it."""
+    from aavso_viewer.submission.builder import CONSISTENCY_LIMIT
+
+    if ratio is None or ratio != ratio:
+        return None
+    return GOOD if ratio < CONSISTENCY_LIMIT else FLAG

@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QFileDialog,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QMessageBox,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
     QWizard,
+    QWidget,
     QWizardPage,
 )
 
@@ -28,17 +30,14 @@ from aavso_viewer.parsing.aavso_writer import format_report, write_aavso_report
 from aavso_viewer.submission.builder import (
     CHECK_MAG_LIMIT,
     ErrorMethod,
-    SpreadMode,
     Submission,
     SubmissionError,
     build_submission,
     choose_method,
+    frame_consistency,
 )
 from aavso_viewer.transform.engine import untransformable_reason
 from aavso_viewer.ui import coloring
-from aavso_viewer.ui.transform_dialog import settings
-
-SPREAD_MODE_KEY = "submission/comp_spread_mode"
 
 PAGE_SOURCE, PAGE_COMBINE, PAGE_VARIES, PAGE_LIGHT_CURVE, PAGE_PREVIEW = range(5)
 
@@ -71,6 +70,25 @@ def _read_only_table(columns: list[str]) -> QTableWidget:
     table.verticalHeader().setVisible(False)
     table.setEditTriggers(QTableWidget.NoEditTriggers)
     return table
+
+
+def _fit_height(table: QTableWidget) -> None:
+    """Shrink a small table to exactly its rows, so it takes no more room than it needs."""
+    table.resizeRowsToContents()
+    height = table.horizontalHeader().height() + 2 * table.frameWidth()
+    table.setFixedHeight(height + sum(table.rowHeight(r) for r in range(table.rowCount())))
+
+
+def _titled_table(parent_layout: QHBoxLayout, title: str, columns: list[str]) -> tuple[QWidget, QTableWidget]:
+    box = QWidget()
+    layout = QVBoxLayout(box)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(QLabel(title))
+    table = _read_only_table(columns)
+    layout.addWidget(table)
+    layout.addStretch()
+    parent_layout.addWidget(box)
+    return box, table
 
 
 def _set_cell(table: QTableWidget, r: int, c: int, text: str) -> QTableWidgetItem:
@@ -196,18 +214,6 @@ class _LightCurvePage(QWizardPage):
         layout = QVBoxLayout(self)
         self.text = _wrapped("")
         layout.addWidget(self.text)
-        self.spread_question = _wrapped(
-            "How should the spread across the comparison stars become MERR? (Combined in quadrature "
-            "with the SNR uncertainty either way.) The course's wording allows either -- worth confirming "
-            "with your mentor."
-        )
-        layout.addWidget(self.spread_question)
-        self.spread_choice = _choice(self, layout, [mode.label for mode in SpreadMode])
-        try:
-            saved = SpreadMode(settings().value(SPREAD_MODE_KEY, SpreadMode.STD.value, type=str))
-        except ValueError:
-            saved = SpreadMode.STD
-        self.spread_choice.button(list(SpreadMode).index(saved)).setChecked(True)
         self.spread_table = _read_only_table(["Filter", "Comps", "Median spread (Std)", "Median MERR (SNR)"])
         layout.addWidget(self.spread_table)
         self.problem = _wrapped("")
@@ -219,8 +225,7 @@ class _LightCurvePage(QWizardPage):
         method = self._wizard.method()
         self.text.setText("The target is assumed bright (well above sky, read and dark noise). " + method.description)
         ensemble = method == ErrorMethod.COMP_SPREAD
-        for widget in (self.spread_question, self.spread_table, *self.spread_choice.buttons()):
-            widget.setVisible(ensemble)
+        self.spread_table.setVisible(ensemble)
         self.problem.clear()
         if ensemble:
             self._wizard.spread = None
@@ -248,11 +253,7 @@ class _LightCurvePage(QWizardPage):
             _set_cell(self.spread_table, r, 1, "/".join(map(str, comps)) or "0")
             _set_cell(self.spread_table, r, 2, f"{spread.loc[rows, 'std'].median():.3f}")
             _set_cell(self.spread_table, r, 3, f"{df.loc[rows, 'MERR'].median():.3f}")
-
-    def spread_mode(self) -> SpreadMode:
-        mode = list(SpreadMode)[max(self.spread_choice.checkedId(), 0)]
-        settings().setValue(SPREAD_MODE_KEY, mode.value)
-        return mode
+        _fit_height(self.spread_table)
 
     def isComplete(self):
         return self._wizard.method() != ErrorMethod.COMP_SPREAD or self._wizard.spread is not None
@@ -279,28 +280,34 @@ class _PreviewPage(QWizardPage):
         self.notes.setReadOnly(True)
         self.notes.setMaximumHeight(70)
         layout.addWidget(self.notes)
+        checks = QHBoxLayout()
+        layout.addLayout(checks)
+        # The mentor's check for a combined point: the Std across frames should be about
+        # the same as, or lower than, what a single frame's uncertainty predicts.
+        self.consistency_box, self.consistency_table = _titled_table(
+            checks, "Single frame vs across frames", ["Filter", "Single frame", "Across frames", "Ratio"]
+        )
         # How much the transformed magnitudes depend on the transform coefficients'
         # own errors, judged against the MERR being submitted. It's a systematic
         # uncertainty, so it's shown for reference and not added to MERR.
-        self.coeff_label = QLabel("Transform coefficient uncertainty (not included in MERR)")
-        layout.addWidget(self.coeff_label)
-        self.coeff_table = _read_only_table(["Filter", "MERR", "Coeff ±"])
-        layout.addWidget(self.coeff_table)
+        self.coeff_box, self.coeff_table = _titled_table(
+            checks, "Transform coefficient uncertainty (not included in MERR)", ["Filter", "MERR", "Coeff ±"]
+        )
+        checks.addStretch()
         self.submission: Submission | None = None
 
     def initializePage(self):
         self.submission = None
         self.table.setRowCount(0)
         self.notes.clear()
-        self.coeff_label.hide()
-        self.coeff_table.hide()
+        self.consistency_box.hide()
+        self.coeff_box.hide()
         method = self._wizard.method()
         try:
             self.submission = build_submission(
                 self._wizard.source_report(),
                 method,
                 comp_spread=self._wizard.spread,
-                spread_mode=self._wizard.light_curve_page.spread_mode(),
             )
             format_report(self.submission.report)  # surface any field-validation error now, not at save
         except (SubmissionError, ValueError) as exc:
@@ -319,6 +326,8 @@ class _PreviewPage(QWizardPage):
                 fmt = _PREVIEW_FORMATS.get(column)
                 _set_cell(self.table, r, c, fmt.format(value) if fmt and value == value else str(value))
         self.table.selectRow(0)
+        if method == ErrorMethod.STD_TARGET:
+            self._fill_consistency_table()
         self._fill_coeff_table()
         self.completeChanged.emit()
 
@@ -329,8 +338,7 @@ class _PreviewPage(QWizardPage):
                 sensitivity = self._wizard.session.coefficient_sensitivity()
             except ValueError:
                 sensitivity = None
-        self.coeff_label.setVisible(bool(sensitivity))
-        self.coeff_table.setVisible(bool(sensitivity))
+        self.coeff_box.setVisible(bool(sensitivity))
         if not sensitivity:
             return
         # One MERR per filter for a combined point; a light curve's vary by frame.
@@ -354,9 +362,40 @@ class _PreviewPage(QWizardPage):
                 "Shift in the mean magnitude with each coefficient moved by ± its error:\n"
                 + "\n".join(f"{name}: {shift:.4f}" for name, shift in sorted(s.terms.items(), key=lambda t: -t[1]))
             )
-        self.coeff_table.resizeRowsToContents()
-        height = self.coeff_table.horizontalHeader().height() + 2 * self.coeff_table.frameWidth()
-        self.coeff_table.setFixedHeight(height + sum(self.coeff_table.rowHeight(r) for r in range(len(filters))))
+        _fit_height(self.coeff_table)
+
+    def _fill_consistency_table(self):
+        report = self._wizard.source_report()
+        spread = None
+        if report.is_ensemble:
+            try:
+                spread = self._wizard.session.comp_spread(self._wizard.source_page.use_transformed())
+            except ValueError:
+                spread = None  # without the General Report, a frame's MERR is its SNR error alone
+        if report.is_ensemble and spread is not None:
+            source = "the spread across the comparison stars combined with the SNR uncertainty (Technique #3)"
+        else:
+            source = "its MERR (the SNR uncertainty, as propagated by the transform when transformed)"
+        rows = frame_consistency(report, spread)
+        self.consistency_table.setRowCount(len(rows))
+        for r, row in enumerate(rows):
+            _set_cell(self.consistency_table, r, 0, row.filt)
+            _set_cell(self.consistency_table, r, 1, f"{row.single:.3f}").setToolTip(
+                f"Median over the {row.filt} frames of each frame's uncertainty: {source}."
+            )
+            _set_cell(self.consistency_table, r, 2, f"{row.across:.3f}").setToolTip(
+                "Std of the target's magnitude across the frames -- the MERR being submitted."
+            )
+            item = _set_cell(self.consistency_table, r, 3, f"{row.ratio:.1f}×")
+            color = coloring.consistency_color(row.ratio)
+            if color is not None:
+                item.setForeground(color)
+            item.setToolTip(
+                "About 1× or lower is expected. 1.5× or more means something is worth tracking down: "
+                "one bad frame, clouds, or (when transformed) noise in each frame's color."
+            )
+        _fit_height(self.consistency_table)
+        self.consistency_box.setVisible(bool(rows))
 
     def _show_notes(self):
         rows = self.table.selectionModel().selectedRows()

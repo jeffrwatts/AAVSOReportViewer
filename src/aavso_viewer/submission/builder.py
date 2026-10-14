@@ -11,7 +11,9 @@ so the CCD-equation branch never comes up):
   - several comparison stars (ensemble): spread of the target estimates across them.
   - one comparison star: the SNR-based per-frame MERR.
 
-Std here is the per-frame standard deviation, not the standard deviation of the mean.
+Std here is the per-frame standard deviation, not the standard deviation of the mean --
+for the comp spread too, as the uncertainty course's Technique #3 intends (confirmed by
+Jeff's AAVSO mentor).
 """
 
 from __future__ import annotations
@@ -52,22 +54,6 @@ class ErrorMethod(str, Enum):
             "per-frame uncertainty (TA's propagated value when transformed).",
             ErrorMethod.COMP_SPREAD: "Each frame reported separately with an ensemble; MERR = spread of the "
             "target estimates across the comparison stars, combined with the SNR uncertainty.",
-        }[self]
-
-
-class SpreadMode(str, Enum):
-    """How the spread of per-comp target estimates becomes MERR (ensemble light
-    curves). The course's wording allows either reading, so it's a setting until an
-    AAVSO mentor confirms which is intended."""
-
-    STD = "STD"
-    SDOM = "SDOM"
-
-    @property
-    def label(self) -> str:
-        return {
-            SpreadMode.STD: "Standard deviation across the comps (more conservative)",
-            SpreadMode.SDOM: "Standard deviation of the mean (Std / √N comps)",
         }[self]
 
 
@@ -190,7 +176,7 @@ def _combine(report: AavsoReport, method: ErrorMethod) -> tuple[pd.DataFrame, li
 
 
 def _per_frame(
-    report: AavsoReport, method: ErrorMethod, comp_spread: pd.DataFrame | None, spread_mode: SpreadMode
+    report: AavsoReport, method: ErrorMethod, comp_spread: pd.DataFrame | None
 ) -> tuple[pd.DataFrame, list[str]]:
     out = report.df[[c for c in [*STANDARD_COLUMNS, ROW_COMMENTS_COLUMN] if c in report.df.columns]].copy()
     extra = {j: {"MERRMETHOD": method.value} for j in out.index}
@@ -204,12 +190,9 @@ def _per_frame(
             raise SubmissionError(
                 f"{short} frame(s) have fewer than 2 comparison stars measured -- no spread to report."
             )
-        sigma = spread["std"] / (np.sqrt(spread["n"]) if spread_mode == SpreadMode.SDOM else 1.0)
-        out["MERR"] = np.hypot(sigma, out["MERR"]).round(3)
+        out["MERR"] = np.hypot(spread["std"], out["MERR"]).round(3)
         for j in out.index:
-            extra[j].update(
-                COMPSPREAD=spread_mode.value, NCOMP=str(int(spread.at[j, "n"])), COMPSTD=f"{spread.at[j, 'std']:.3f}"
-            )
+            extra[j].update(NCOMP=str(int(spread.at[j, "n"])), COMPSTD=f"{spread.at[j, 'std']:.3f}")
         gap = (spread["mean"] - report.df["MAG"]).abs()
         if (gap > _CONSISTENCY_LIMIT).any():
             warnings.append(
@@ -224,27 +207,66 @@ def _per_frame(
     return out, warnings
 
 
+@dataclass(frozen=True)
+class FrameConsistency:
+    """One filter of the mentor's consistency check for a combined point: the
+    uncertainty a single frame carries vs the scatter actually seen across the frames.
+    The scatter should be about the same or lower; well above it (CONSISTENCY_LIMIT),
+    something is off -- one bad frame, clouds -- worth tracking down."""
+
+    filt: str
+    single: float
+    """Median per-frame uncertainty: MERR, or for an ensemble with its comp spread
+    known, that spread combined with MERR (Technique #3)."""
+    across: float
+    """Std of the target's magnitude across the frames -- the combined point's MERR."""
+
+    @property
+    def ratio(self) -> float:
+        return self.across / self.single if self.single else np.nan
+
+
+# Per Jeff's AAVSO mentor: a Std across frames 1.5x or more the single-frame estimate
+# means something needs tracking down.
+CONSISTENCY_LIMIT = 1.5
+
+
+def frame_consistency(report: AavsoReport, comp_spread: pd.DataFrame | None = None) -> list[FrameConsistency]:
+    """Per filter, the single-frame uncertainty vs the Std across frames, for a report
+    whose frames will be combined (ErrorMethod.STD_TARGET). `comp_spread`
+    (Session.comp_spread, indexed like report.df) is used for an ensemble's
+    single-frame uncertainty when given."""
+    df = report.df
+    single = df["MERR"]
+    if comp_spread is not None:
+        spread = comp_spread.reindex(df.index)["std"]
+        single = pd.Series(np.where(spread.notna(), np.hypot(spread, df["MERR"]), df["MERR"]), index=df.index)
+    result = []
+    for filt in report.filters:
+        rows = df["FILT"] == filt
+        if rows.sum() < 2:
+            continue
+        result.append(FrameConsistency(filt, float(single[rows].median()), float(df.loc[rows, "MAG"].std(ddof=1))))
+    return result
+
+
 def build_submission(
     report: AavsoReport,
     method: ErrorMethod,
     comp_spread: pd.DataFrame | None = None,
-    spread_mode: SpreadMode = SpreadMode.STD,
 ) -> Submission:
     """`comp_spread` (Session.comp_spread, indexed like report.df) is required for
     ErrorMethod.COMP_SPREAD and ignored otherwise."""
     if method in (ErrorMethod.STD_TARGET, ErrorMethod.STD_CHECK):
         out, warnings = _combine(report, method)
     else:
-        out, warnings = _per_frame(report, method, comp_spread, spread_mode)
+        out, warnings = _per_frame(report, method, comp_spread)
 
     header = dict(report.header)
     original = header.get("SOFTWARE")
     ours = f"AAVSO Report Viewer {app_version()}"
     header["SOFTWARE"] = f"{original} + {ours}" if original else ours
-    description = method.description
-    if method == ErrorMethod.COMP_SPREAD:
-        description += f" Spread: {spread_mode.label}."
-    comments = [*report.comments, f"#  {ours}: {description}"]
+    comments = [*report.comments, f"#  {ours}: {method.description}"]
     return Submission(
         report_from_frame(out, header=header, comments=comments, source_path=report.source_path),
         method,

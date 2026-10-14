@@ -7,6 +7,7 @@ from aavso_viewer.submission.builder import (
     SubmissionError,
     build_submission,
     choose_method,
+    frame_consistency,
 )
 from aavso_viewer.transform.coefficients import parse_tg_ini
 from aavso_viewer.transform.engine import transform_report
@@ -103,3 +104,22 @@ def test_snr_path_keeps_frames_and_round_trips(tmp_path):
 def test_comp_spread_needs_the_spread():
     with pytest.raises(SubmissionError, match="hasn't been computed"):
         build_submission(_sn_ta(), ErrorMethod.COMP_SPREAD)
+
+
+def test_frame_consistency_sn_transformed():
+    """The mentor's check on the real SN 2026aaiv submission: the transformed frames'
+    Std is 1.5x or more their per-frame MERR in every filter (B most, ~2.7x) -- each
+    frame's own noisy color inflates the scatter."""
+    raw = parse_aavso_report(FIXTURES / f"{SN}.txt")
+    transformed = transform_report(raw, parse_tg_ini(FIXTURES / "SA114-VIS.ini")).report
+    rows = {r.filt: r for r in frame_consistency(transformed)}
+
+    assert set(rows) == {"B", "V", "R"}
+    assert rows["B"].single == pytest.approx(0.021)
+    assert rows["B"].across == pytest.approx(0.056, abs=0.0005)
+    assert rows["B"].ratio == pytest.approx(2.7, abs=0.1)
+    assert all(r.ratio >= 1.5 for r in rows.values())
+    # The across-frames Std is exactly the combined point's MERR.
+    sub = build_submission(transformed, ErrorMethod.STD_TARGET).report.df.set_index("FILT")
+    for filt, r in rows.items():
+        assert sub.at[filt, "MERR"] == pytest.approx(round(r.across, 3))
