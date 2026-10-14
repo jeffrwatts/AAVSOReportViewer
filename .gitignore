@@ -11,3 +11,8 @@ uncertainty-v8.pdf
 
 # Mentor's personal analysis spreadsheets -- shared privately; never publish
 *.xlsx
+
+# Local scratch data and app log
+*.log
+temp/
+temp2/
