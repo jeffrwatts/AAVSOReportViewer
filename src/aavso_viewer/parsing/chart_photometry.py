@@ -43,15 +43,33 @@ def _fetch_chart_json(chart_id: str, timeout: float) -> dict:
     return resp.json()
 
 
+def _vphot_labels(stars: list[dict]) -> list[str]:
+    """The chart's labels as VPhot names them. A chart can repeat a label for two
+    different stars (e.g. two '105's); VPhot keeps the first and suffixes later ones
+    in chart order -- '105', '105_1', '105_2' -- and its reports use those names.
+    (Confirmed on chart X43295PS: VPhot's '105_1' and '119_1' are the second '105'
+    and '119', by their V magnitudes and the report's averaged CREFMAG.)"""
+    seen: dict[str, int] = {}
+    labels = []
+    for star in stars:
+        label = str(star.get("label") or "").strip()
+        if label:
+            count = seen.get(label, 0)
+            seen[label] = count + 1
+            label = f"{label}_{count}" if count else label
+        labels.append(label)
+    return labels
+
+
 def fetch_chart_auids(chart_id: str, timeout: float = 8.0) -> dict[str, str]:
     """Returns {star_label: AUID}, e.g. {"103": "000-BKZ-381"} -- AAVSO prefers AUIDs
     over chart labels in CNAME/KNAME, and TransformApplier substitutes them. Raises on
     any network/parse failure, like fetch_chart_photometry."""
-    data = _fetch_chart_json(chart_id, timeout)
+    stars = _fetch_chart_json(chart_id, timeout).get("photometry", [])
     return {
-        str(star["label"]).strip(): str(star["auid"]).strip()
-        for star in data.get("photometry", [])
-        if star.get("label") and star.get("auid")
+        label: str(star["auid"]).strip()
+        for label, star in zip(_vphot_labels(stars), stars)
+        if label and star.get("auid")
     }
 
 
@@ -60,11 +78,10 @@ def fetch_chart_photometry(chart_id: str, timeout: float = 8.0) -> dict[str, dic
     {"103": {"V": ChartMag(10.334, 0.047)}, ...}. Raises on any network/parse failure
     -- callers should catch and degrade gracefully, since this is an optional online
     enhancement to an otherwise fully offline tool."""
-    data = _fetch_chart_json(chart_id, timeout)
+    stars = _fetch_chart_json(chart_id, timeout).get("photometry", [])
 
     result: dict[str, dict[str, ChartMag]] = {}
-    for star in data.get("photometry", []):
-        label = str(star.get("label", "")).strip()
+    for label, star in zip(_vphot_labels(stars), stars):
         if not label:
             continue
         mags: dict[str, ChartMag] = {}

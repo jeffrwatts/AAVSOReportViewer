@@ -37,6 +37,7 @@ from aavso_viewer.ui.chart_detail_dialog import (
     TargetBeforeAfterDetailDialog,
 )
 from aavso_viewer.ui.chart_thumbnail import ChartThumbnail
+from aavso_viewer.ui.ensemble_dialog import EnsembleCompsDialog
 from aavso_viewer.ui.share_plot_dialog import SharePlotDialog
 from aavso_viewer.ui.startup_dialog import StartupDialog
 from aavso_viewer.ui.submission_wizard import SubmissionWizard
@@ -209,9 +210,10 @@ class MainWindow(QMainWindow):
         apply_action.triggered.connect(self._apply_transform)
         self._clear_transform_action = transform_menu.addAction("Clear Transform")
         self._clear_transform_action.triggered.connect(self._clear_transform)
-        transform_menu.aboutToShow.connect(
-            lambda: self._clear_transform_action.setEnabled(self.session.has_after_report)
-        )
+        transform_menu.addSeparator()
+        self._ensemble_comps_action = transform_menu.addAction("Ensemble Comps…")
+        self._ensemble_comps_action.triggered.connect(self._open_ensemble_comps)
+        transform_menu.aboutToShow.connect(self._update_transform_menu)
 
         report_menu = self.menuBar().addMenu("&Report")
         submit_action = report_menu.addAction("Create Submission Report…")
@@ -307,6 +309,21 @@ class MainWindow(QMainWindow):
                 f"{len(result.skipped)} frame(s) couldn't be paired and stay untransformed (TRANS=NO):\n\n"
                 + "\n".join(result.skipped[:15]),
             )
+
+    def _update_transform_menu(self) -> None:
+        self._clear_transform_action.setEnabled(self.session.has_after_report)
+        self._ensemble_comps_action.setEnabled(self.session.is_ensemble)
+
+    def _open_ensemble_comps(self) -> None:
+        if not self.session.has_general_report:
+            QMessageBox.information(
+                self,
+                "Ensemble Comps",
+                "This needs VPhot's General Report for the session (File → Open General Report…) -- "
+                "only it has each comparison star's magnitude per frame.",
+            )
+            return
+        EnsembleCompsDialog(self.session, self).exec()
 
     def _clear_transform(self) -> None:
         self.session.clear_transform()

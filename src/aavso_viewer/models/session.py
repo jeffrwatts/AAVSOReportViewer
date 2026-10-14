@@ -22,6 +22,7 @@ from aavso_viewer.transform.engine import (
     coefficient_sensitivity,
     comp_estimates,
     ensemble_membership_problem,
+    per_comp_estimates,
     transform_report,
     untransformable_reason,
 )
@@ -164,6 +165,16 @@ def _quadrature(a: float | None, b: float | None) -> float | None:
     return None if a is None or b is None else float(np.hypot(a, b))
 
 
+@dataclass(frozen=True)
+class CompMembership:
+    measured: int
+    """Frames in the filter with a measurement for this comparison star."""
+    frames: int
+    """All frames in the filter."""
+    missing: list[float]
+    """JDs of the frames without one."""
+
+
 class Session:
     def __init__(self, aavso: AavsoReport, general: GeneralReport | None = None):
         self.aavso = aavso
@@ -226,13 +237,30 @@ class Session:
         separately (n, mean, std -- see transform.engine.comp_estimates), transformed
         the same way as `after` when `transformed`. Raises ValueError explaining what's
         missing -- the General Report, or the comps' catalog magnitudes (online)."""
+        return comp_estimates(*self._per_comp_inputs(transformed))
+
+    def _per_comp_inputs(self, transformed: bool) -> tuple:
+        """Arguments for transform.engine's per-comp functions, or ValueError saying
+        what's missing."""
         if not self.is_ensemble:
             raise ValueError("Only an ensemble session has a spread across comparison stars.")
+        self._require_general_report()
+        catalog = self._require_catalog()
+        coeffs = None
+        if transformed:
+            if self.after_coeffs is None:
+                raise ValueError("The transformed report wasn't produced in this app, so its per-comp spread can't be computed.")
+            coeffs = self.after_coeffs
+        return self.aavso, self.general.df, self.comp_star_names(), catalog, coeffs
+
+    def _require_general_report(self) -> None:
         if self.general is None:
             raise ValueError(
                 "This needs VPhot's General Report for the session (File → Open General Report…) -- "
                 "only it has each comparison star's magnitude per frame."
             )
+
+    def _require_catalog(self) -> dict[str, dict[str, ChartMag]]:
         if self._chart_photometry is None:
             self._chart_fetch_attempted = False  # retry: the last attempt may have been a transient failure
         catalog = self.chart_photometry()
@@ -241,12 +269,40 @@ class Session:
                 "Couldn't get the comparison stars' catalog magnitudes from AAVSO's chart service "
                 f"(chart {self.chart_id or 'unknown'}) -- check the network connection and try again."
             )
-        coeffs = None
-        if transformed:
-            if self.after_coeffs is None:
-                raise ValueError("The transformed report wasn't produced in this app, so its per-comp spread can't be computed.")
-            coeffs = self.after_coeffs
-        return comp_estimates(self.aavso, self.general.df, self.comp_star_names(), catalog, coeffs)
+        return catalog
+
+    def comp_membership(self) -> dict[str, dict[str, CompMembership]]:
+        """For an ensemble session, {comp: {filter: CompMembership}} -- in how many of
+        each filter's frames (General Report rows) each comparison star was measured.
+        A clean run is n/n everywhere: every frame's ensemble is the same stars."""
+        if not self.is_ensemble:
+            raise ValueError("Only an ensemble session has comparison-star membership.")
+        self._require_general_report()
+        general = self.general.df
+        result = {}
+        for comp in self.comp_star_names():
+            result[comp] = {}
+            for filt in self.filters:
+                rows = general.loc[general["Filter"] == filt]
+                measured = rows[comp].notna() if comp in rows.columns else pd.Series(False, index=rows.index)
+                result[comp][filt] = CompMembership(
+                    int(measured.sum()), len(rows), [float(jd) for jd in rows.loc[~measured, "JD"]]
+                )
+        return result
+
+    def comp_offsets(self, transformed: bool) -> pd.DataFrame:
+        """For an ensemble session, each comparison star's measured magnitude minus its
+        catalog magnitude, median over the frames, one column per filter (rows: comps).
+        Measured means against the rest of the ensemble, as VPhot's comp rows show it --
+        so the offsets of an ensemble's comps balance out, and one that stands apart
+        disagrees with the others (a catalog error, or a color the transform fixes).
+        Transformed like `after` when `transformed`; raises ValueError like comp_spread."""
+        report, *_ = inputs = self._per_comp_inputs(transformed)
+        estimates = per_comp_estimates(*inputs)
+        # A comp that reads too bright makes the target read too faint against it.
+        offsets = -estimates.sub(estimates.mean(axis=1), axis=0)
+        offsets["FILT"] = report.df["FILT"]
+        return offsets.groupby("FILT").median().T.reindex(columns=self.filters)
 
     def coefficient_sensitivity(self) -> dict[str, CoefficientSensitivity]:
         """Per filter, how much the after report's target magnitudes depend on the

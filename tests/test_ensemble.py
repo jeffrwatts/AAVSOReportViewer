@@ -140,3 +140,46 @@ def test_frame_consistency_uses_comp_spread(session):
         assert with_spread[filt].across == snr_only[filt].across
         assert with_spread[filt].single > snr_only[filt].single
         assert with_spread[filt].ratio < snr_only[filt].ratio
+
+
+def test_comp_membership_clean_run(session):
+    """Every comp measured in every frame of every filter: n/n everywhere."""
+    membership = session.comp_membership()
+    assert set(membership) == set(COMPS)
+    for by_filter in membership.values():
+        for m in by_filter.values():
+            assert m.measured == m.frames == 5
+            assert m.missing == []
+
+
+def test_comp_membership_reports_dropped_frame(session):
+    general = session.general.df
+    row = general.index[general["Filter"] == "B"][2]
+    general.loc[row, "135"] = np.nan
+    m = session.comp_membership()["135"]["B"]
+    assert (m.measured, m.frames) == (4, 5)
+    assert m.missing == [pytest.approx(general.at[row, "JD"])]
+    assert session.comp_membership()["130"]["B"].measured == 5
+
+
+def test_comp_offsets_match_vphot_comp_columns(session):
+    """Untransformed, a comp's offset is its General Report magnitude (measured
+    against the ensemble, as VPhot shows it) minus its catalog magnitude. With two
+    comps the offsets mirror each other."""
+    offsets = session.comp_offsets(transformed=False)
+    catalog = _catalog()
+    general = session.general.df
+    for comp in COMPS:
+        for filt in "BVR":
+            measured = general.loc[general["Filter"] == filt, comp].median()
+            assert offsets.at[comp, filt] == pytest.approx(measured - catalog[comp][filt].mag, abs=0.002)
+    assert np.allclose(offsets.sum(), 0, atol=1e-9)
+
+
+def test_comp_offsets_transformed_needs_in_app_transform(session):
+    with pytest.raises(ValueError, match="wasn't produced in this app"):
+        session.comp_offsets(transformed=True)
+    session.apply_transform(_coeffs())
+    after = session.comp_offsets(transformed=True)
+    assert list(after.columns) == session.filters
+    assert set(after.index) == set(COMPS)

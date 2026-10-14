@@ -91,8 +91,11 @@ def plot_comp_stars(ax, df: pd.DataFrame, thumbnail: bool) -> None:
     stars = sorted(df["star"].unique())
     base = int(df["JD"].min())
     for star in stars:
-        g = df.loc[df["star"] == star].sort_values("JD")
-        _draw(ax, g["JD"] - base, g["mag"], color_for(star, stars), thumbnail, label=star)
+        # One line per filter: a single line through all of a star's frames would zig-zag
+        # between its B and V magnitudes (an OSC frames them at the same JD).
+        for i, (_, g) in enumerate(df.loc[df["star"] == star].groupby("Filter")):
+            g = g.sort_values("JD")
+            _draw(ax, g["JD"] - base, g["mag"], color_for(star, stars), thumbnail, label=star if i == 0 else None)
     ax.invert_yaxis()
     _style_axes(ax, thumbnail, xlabel=f"JD+{base}", ylabel="Magnitude")
     if not thumbnail:

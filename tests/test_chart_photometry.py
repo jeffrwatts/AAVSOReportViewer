@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import MagicMock, patch
 
 from aavso_viewer.parsing.chart_photometry import fetch_chart_auids, fetch_chart_photometry
@@ -53,3 +54,35 @@ def test_fetch_chart_auids_maps_labels():
 
     with patch("aavso_viewer.parsing.chart_photometry.requests.get", return_value=mock_resp):
         assert fetch_chart_auids("X42923UD") == {"103": "000-BKZ-381", "108": "000-BKZ-357"}
+
+
+# Trimmed from X43295PS (CzeV616), whose chart repeats labels 105 and 119. VPhot's
+# report names the second of each '105_1' / '119_1' (V 10.549 and 11.886 -- the
+# ensemble's CREFMAG 11.258 is the mean of 10.549, 11.340 and 11.886).
+DUPLICATE_LABELS_RESPONSE = {
+    "photometry": [
+        {"auid": "000-BKK-881", "label": "105", "bands": [{"band": "V", "mag": 10.47, "error": 0.026}]},
+        {"auid": "000-BQM-378", "label": "105", "bands": [{"band": "V", "mag": 10.549, "error": 0.036}]},
+        {"auid": "000-BQM-380", "label": "113", "bands": [{"band": "V", "mag": 11.34, "error": 0.006}]},
+        {"auid": "000-BLP-292", "label": "119", "bands": [{"band": "V", "mag": 11.851, "error": 0.014}]},
+        {"auid": "000-BQM-381", "label": "119", "bands": [{"band": "V", "mag": 11.886, "error": 0.006}]},
+    ]
+}
+
+
+def test_duplicate_chart_labels_named_like_vphot():
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = DUPLICATE_LABELS_RESPONSE
+    mock_resp.raise_for_status.return_value = None
+
+    with patch("aavso_viewer.parsing.chart_photometry.requests.get", return_value=mock_resp):
+        mags = fetch_chart_photometry("X43295PS")
+        auids = fetch_chart_auids("X43295PS")
+
+    assert set(mags) == {"105", "105_1", "113", "119", "119_1"}
+    assert mags["105"]["V"].mag == 10.47
+    assert mags["105_1"]["V"].mag == 10.549
+    assert mags["119_1"]["V"].mag == 11.886
+    assert (mags["105_1"]["V"].mag + mags["113"]["V"].mag + mags["119_1"]["V"].mag) / 3 == pytest.approx(11.258, abs=0.0005)
+    assert auids["105_1"] == "000-BQM-378"
+    assert auids["119"] == "000-BLP-292"

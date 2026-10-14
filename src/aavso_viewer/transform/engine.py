@@ -315,7 +315,7 @@ def transform_report(
     return TransformResult(new_report, set_name, transformed, skipped)
 
 
-def comp_estimates(
+def per_comp_estimates(
     report: AavsoReport,
     general: pd.DataFrame,
     comps: list[str],
@@ -323,9 +323,9 @@ def comp_estimates(
     coeffs: TransformCoefficients | None = None,
 ) -> pd.DataFrame:
     """For each frame of an (untransformed) ensemble report, the target's magnitude
-    estimated against each comp separately -- transformed with `coeffs` when given --
-    summarized as columns n (comps used), mean and std (ddof=1), indexed like
-    report.df. `catalog` is {label: {filter: ChartMag}} (Session.chart_photometry()).
+    estimated against each comp separately -- transformed with `coeffs` when given.
+    One column per comp, indexed like report.df; NaN where a comp wasn't used.
+    `catalog` is {label: {filter: ChartMag}} (Session.chart_photometry()).
 
     Each comp's General Report column is its magnitude measured against the whole
     ensemble, so target - comp is their instrumental difference (the shared zero
@@ -339,9 +339,8 @@ def comp_estimates(
     partners_of = _pair_frames(df, rules)[0] if rules else {j: {f: j} for j, f in df["FILT"].items()}
     general_rows = _sorted_by_filter(general, report.filters, "Filter", "JD")
 
-    stats = {}
+    estimates = pd.DataFrame(np.nan, index=df.index, columns=comps)
     for j, partners in partners_of.items():
-        stats[j] = (0, np.nan, np.nan)
         if not partners or any(p is None for p in partners.values()):
             continue
         g = {}
@@ -361,8 +360,23 @@ def comp_estimates(
             cat = {f: np.array([catalog[c][f].mag for c in used]) for f in partners}
             filt = df.at[j, "FILT"]
             est = _standard_mag(filt, rules, d, cat, coeffs) if rules else cat[filt] + d[filt]
-            stats[j] = (len(used), float(np.mean(est)), float(np.std(est, ddof=1)) if len(used) > 1 else np.nan)
-    return pd.DataFrame.from_dict(stats, orient="index", columns=["n", "mean", "std"]).reindex(df.index)
+            estimates.loc[j, used] = est
+    return estimates
+
+
+def comp_estimates(
+    report: AavsoReport,
+    general: pd.DataFrame,
+    comps: list[str],
+    catalog: dict[str, dict[str, object]],
+    coeffs: TransformCoefficients | None = None,
+) -> pd.DataFrame:
+    """per_comp_estimates summarized per frame as columns n (comps used), mean and
+    std (ddof=1, NaN with fewer than 2 comps), indexed like report.df."""
+    estimates = per_comp_estimates(report, general, comps, catalog, coeffs)
+    return pd.DataFrame(
+        {"n": estimates.notna().sum(axis=1), "mean": estimates.mean(axis=1), "std": estimates.std(axis=1, ddof=1)}
+    )
 
 
 @dataclass(frozen=True)
