@@ -181,11 +181,10 @@ class Session:
         self.general: GeneralReport | None = None
         self.after: AavsoReport | None = None
         self.after_source: str | None = None
-        """Where the after report came from, for display -- a file name, or the
-        coefficient file when the transform was applied in-app."""
+        """Where the after report came from, for display (the coefficient file)."""
         self.after_coeffs: TransformCoefficients | None = None
-        """The coefficients behind `after` when it was transformed in-app (None for a
-        loaded file) -- needed to transform per-comp estimates the same way."""
+        """The coefficients behind `after` -- needed to transform per-comp estimates
+        the same way."""
         self._merged: pd.DataFrame | None = None
         self._chart_photometry: dict[str, dict[str, ChartMag]] | None = None
         self._chart_fetch_attempted = False
@@ -199,10 +198,11 @@ class Session:
         self._merged = None
 
     def attach_after_report(self, after: AavsoReport, source: str | None = None) -> None:
-        """The TA-transformed counterpart of this session's (untransformed) report --
-        matched by filter only, not star name, since a TransformApplier report renames
-        stars from local designations (e.g. '117') to AAVSO AUIDs for the same
-        physical star."""
+        """The transformed counterpart of this session's (untransformed) report --
+        matched by filter only, not star name, since the transform (like TA) can rename
+        stars from local designations (e.g. '117') to AAVSO AUIDs for the same physical
+        star. The app sets it via apply_transform; tests also attach TransformApplier
+        output directly to check parity."""
         self.after = after
         self.after_source = source
         self.after_coeffs = None

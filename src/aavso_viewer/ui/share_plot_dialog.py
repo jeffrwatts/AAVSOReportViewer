@@ -26,8 +26,8 @@ _TIME_MODES = [("Julian Date (JD)", "jd"), ("UTC", "utc"), ("HST", "hst")]
 
 
 class SharePlotDialog(QDialog):
-    """Pick any or all filters' target light curve (as reported, or transformed if a
-    Transformed Report is loaded) and a time axis format, then export the result
+    """Pick any or all filters' target light curve (as reported, or transformed once the
+    transform has been applied) and a time axis format, then export the result
     as a JPEG. Each filter is drawn in its own color, matching the rest of the app."""
 
     def __init__(self, session: Session, parent=None):

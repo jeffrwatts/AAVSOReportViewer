@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import (
@@ -43,8 +42,8 @@ from aavso_viewer.ui.startup_dialog import StartupDialog
 from aavso_viewer.ui.submission_wizard import SubmissionWizard
 from aavso_viewer.ui.transform_dialog import TransformDialog
 
-# Column order. The "(After)" columns are hidden entirely (not just blank) unless a
-# Transformed Report is loaded, matching Jeff's established lean-table preference --
+# Column order. The "(After)" columns are hidden entirely (not just blank) unless the
+# transform has been applied, matching Jeff's established lean-table preference --
 # see feedback-notebook-table-iteration.md.
 TABLE_COLUMNS = [
     "Star", "Filter", "Average", "Average (After)", "Range", "Range (After)",
@@ -198,9 +197,6 @@ class MainWindow(QMainWindow):
         open_general_action = menu.addAction("Open General Report…")
         open_general_action.triggered.connect(self._prompt_for_general_report)
 
-        open_transformed_action = menu.addAction("Open Transformed Report…")
-        open_transformed_action.triggered.connect(self._prompt_for_transformed_report)
-
         menu.addSeparator()
         exit_action = menu.addAction("Exit")
         exit_action.triggered.connect(self.close)
@@ -224,8 +220,7 @@ class MainWindow(QMainWindow):
         share_plot_action.triggered.connect(self._open_share_plot)
 
     def _open_report_set(self) -> None:
-        """Load a whole new session (AAVSO Report + optional Transformed/General
-        Report) via the same dialog shown at startup, without needing to restart the app."""
+        """Load a whole new session (AAVSO Report + optional General Report) via the same dialog shown at startup, without needing to restart the app."""
         dialog = StartupDialog(self)
         if dialog.exec() != QDialog.Accepted:
             return
@@ -233,14 +228,10 @@ class MainWindow(QMainWindow):
             report = parse_aavso_report(dialog.aavso_report_path())
             general_path = dialog.general_report_path()
             general = parse_general_report(general_path) if general_path else None
-            transformed_path = dialog.transformed_report_path()
-            after = parse_aavso_report(transformed_path) if transformed_path else None
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Failed to load report set", str(exc))
             return
         self.session = Session(report, general)
-        if after is not None:
-            self.session.attach_after_report(after, source=Path(transformed_path).name)
         self._refresh_all()
 
     def _open_aavso_report(self) -> None:
@@ -269,20 +260,6 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Failed to load General Report", str(exc))
             return
         self.session.attach_general_report(general)
-        self._refresh_all()
-
-    def _prompt_for_transformed_report(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Open Transformed Report", "", "Text files (*.txt);;All files (*)"
-        )
-        if not path:
-            return
-        try:
-            after = parse_aavso_report(path)
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Failed to load Transformed Report", str(exc))
-            return
-        self.session.attach_after_report(after, source=Path(path).name)
         self._refresh_all()
 
     def _apply_transform(self) -> None:
@@ -691,7 +668,7 @@ class MainWindow(QMainWindow):
         grid_row += 1
 
         # Row 5: Check Star Before/After + Target Before/After, paired -- only shown
-        # once a Transformed Report is loaded (increment 2).
+        # once the transform has been applied.
         if s.has_after_report:
             check_ba_thumb = self._make_thumbnail("check_before_after", "Check Star Before/After")
             check_ba_thumb.clicked.connect(lambda: CheckBeforeAfterDetailDialog(s, self).exec())

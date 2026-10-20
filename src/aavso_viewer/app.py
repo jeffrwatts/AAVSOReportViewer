@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
@@ -25,14 +24,10 @@ def main() -> int:
             report = parse_aavso_report(dialog.aavso_report_path())
             general_path = dialog.general_report_path()
             general = parse_general_report(general_path) if general_path else None
-            transformed_path = dialog.transformed_report_path()
-            after = parse_aavso_report(transformed_path) if transformed_path else None
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(None, "Failed to load report", str(exc))
             continue
         session = Session(report, general)
-        if after is not None:
-            session.attach_after_report(after, source=Path(transformed_path).name)
 
     window = MainWindow(session)
     window.show()
