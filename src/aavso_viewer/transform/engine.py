@@ -315,6 +315,20 @@ def transform_report(
     return TransformResult(new_report, set_name, transformed, skipped)
 
 
+def _instrumental_difference(row: pd.Series, target: str, used: list[str], cat: np.ndarray, comps: list[str]) -> np.ndarray:
+    """Target minus each used comp's instrumental magnitude, from one General Report row.
+
+    The target column T is measured against all n comps VPhot used in this row, but
+    comp i's column is measured against the other n-1, so T - col_i is off from the
+    true difference by (col_i - cat_i)/n -- comp i's own offset from catalog as the
+    others see it, shared out over the ensemble. The errors sum to zero over the comps
+    (the ensemble mean is unaffected) but spread each comp's estimate out by n/(n-1)
+    if left in."""
+    n = sum(pd.notna(row.get(c)) for c in comps)
+    col = np.array([row[c] for c in used])
+    return (row[target] - col) + (col - cat) / n
+
+
 def per_comp_estimates(
     report: AavsoReport,
     general: pd.DataFrame,
@@ -327,10 +341,12 @@ def per_comp_estimates(
     One column per comp, indexed like report.df; NaN where a comp wasn't used.
     `catalog` is {label: {filter: ChartMag}} (Session.chart_photometry()).
 
-    Each comp's General Report column is its magnitude measured against the whole
-    ensemble, so target - comp is their instrumental difference (the shared zero
-    point cancels). A comp is used for a frame only if it has a measurement and a
-    catalog magnitude in every filter that frame's transform needs."""
+    Each comp's General Report column is its magnitude measured against the *other*
+    comps (leave-one-out), not the whole ensemble -- verified against single-comp
+    reports of the same frames (tests/test_ensemble.py). See _instrumental_difference
+    for how the target-minus-comp instrumental difference is recovered from it. A comp
+    is used for a frame only if it has a measurement and a catalog magnitude in every
+    filter that frame's transform needs."""
     df = report.df
     target = report.star_name
     if target not in general.columns:
@@ -356,8 +372,8 @@ def per_comp_estimates(
             ]
             if not used:
                 continue
-            d = {f: np.array([g[f][target] - g[f][c] for c in used]) for f in partners}
             cat = {f: np.array([catalog[c][f].mag for c in used]) for f in partners}
+            d = {f: _instrumental_difference(g[f], target, used, cat[f], comps) for f in partners}
             filt = df.at[j, "FILT"]
             est = _standard_mag(filt, rules, d, cat, coeffs) if rules else cat[filt] + d[filt]
             estimates.loc[j, used] = est

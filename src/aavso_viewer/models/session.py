@@ -299,8 +299,11 @@ class Session:
         Transformed like `after` when `transformed`; raises ValueError like comp_spread."""
         report, *_ = inputs = self._per_comp_inputs(transformed)
         estimates = per_comp_estimates(*inputs)
-        # A comp that reads too bright makes the target read too faint against it.
-        offsets = -estimates.sub(estimates.mean(axis=1), axis=0)
+        # Comp i measured against the others reads mean(others' estimates) - (its own),
+        # which is n/(n-1) times its estimate's deviation from the all-comp mean. A comp
+        # that reads too bright makes the target read too faint against it, hence the sign.
+        n = estimates.notna().sum(axis=1)
+        offsets = -estimates.sub(estimates.mean(axis=1), axis=0).mul(n / (n - 1), axis=0)
         offsets["FILT"] = report.df["FILT"]
         return offsets.groupby("FILT").median().T.reindex(columns=self.filters)
 

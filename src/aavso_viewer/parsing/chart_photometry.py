@@ -10,7 +10,9 @@ need this.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import requests
 
@@ -23,6 +25,11 @@ _CHART_URL = APPS_BASE_URL + "/vsp/api/chart/{chart_id}/"
 # AAVSO Extended report's plain "R"/"I" filter codes.
 _BAND_TO_FILTER = {"Rc": "R", "Ic": "I"}
 
+# Every successful chart fetch is saved here, and used when the chart service can't be
+# reached (it was down for days in October 2026), so a session that loaded once keeps
+# working offline.
+CACHE_DIR = Path.home() / "Library/Caches/AAVSOReportViewer/charts"
+
 
 @dataclass
 class ChartMag:
@@ -33,14 +40,28 @@ class ChartMag:
 
 
 def _fetch_chart_json(chart_id: str, timeout: float) -> dict:
-    resp = requests.get(
-        _CHART_URL.format(chart_id=chart_id),
-        params={"format": "json"},
-        headers=auth_headers(),
-        timeout=timeout,
-    )
-    resp.raise_for_status()
-    return resp.json()
+    """The chart's JSON from the VSP API, falling back to the last saved copy (see
+    CACHE_DIR) if the request fails. Raises the request's error if there's no copy."""
+    cached = CACHE_DIR / f"{chart_id}.json"
+    try:
+        resp = requests.get(
+            _CHART_URL.format(chart_id=chart_id),
+            params={"format": "json"},
+            headers=auth_headers(),
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        if cached.exists():
+            return json.loads(cached.read_text())
+        raise
+    try:
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        cached.write_text(json.dumps(data))
+    except OSError:
+        pass  # the cache is a convenience; a read-only home shouldn't break the fetch
+    return data
 
 
 def _vphot_labels(stars: list[dict]) -> list[str]:

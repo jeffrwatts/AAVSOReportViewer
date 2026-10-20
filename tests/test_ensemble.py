@@ -14,7 +14,7 @@ from aavso_viewer.parsing.chart_photometry import _BAND_TO_FILTER, ChartMag
 from aavso_viewer.parsing.general_report import parse_general_report
 from aavso_viewer.submission.builder import ErrorMethod, SubmissionError, build_submission, frame_consistency
 from aavso_viewer.transform.coefficients import parse_tg_ini
-from aavso_viewer.transform.engine import TransformError, comp_estimates, transform_report
+from aavso_viewer.transform.engine import TransformError, comp_estimates, per_comp_estimates, transform_report
 
 from test_parsing import FIXTURES
 
@@ -51,6 +51,27 @@ def test_untransformed_comp_estimates_reproduce_vphot_ensemble():
     est = comp_estimates(report, parse_general_report(GENERAL).df, COMPS, _catalog())
     assert (est["n"] == 2).all()
     assert (est["mean"] - report.df["MAG"]).abs().max() <= 0.001
+
+
+SINGLE_COMP_130 = FIXTURES / "AAVSOReport_SN-2026aaiv_BVR_20261011.txt"
+SINGLE_COMP_130_TA = FIXTURES / "AAVSOReport_SN-2026aaiv_BVR_20261011_TA.txt"
+
+
+@pytest.mark.parametrize("transformed", [False, True])
+def test_per_comp_estimate_matches_single_comp_report(transformed):
+    """The target estimated against comp 130 alone, from the ensemble's General
+    Report, equals VPhot's single-comp report against 130 for the same frames (and
+    TA's transform of it). VPhot's comp columns are leave-one-out -- each comp
+    measured against the other comps -- and reading them as measured against the whole
+    ensemble put each 2-comp estimate off by half the comps' disagreement (up to
+    0.04 here), doubling the spread."""
+    report = parse_aavso_report(ENSEMBLE)
+    coeffs = _coeffs() if transformed else None
+    per_comp = per_comp_estimates(report, parse_general_report(GENERAL).df, COMPS, _catalog(), coeffs)
+    single = parse_aavso_report(SINGLE_COMP_130_TA if transformed else SINGLE_COMP_130).df
+    merged = report.df[["DATE", "FILT"]].join(per_comp["130"]).merge(single[["DATE", "FILT", "MAG"]], on=["DATE", "FILT"])
+    assert len(merged) == 15
+    assert (merged["130"] - merged["MAG"]).abs().max() <= 0.002
 
 
 def test_average_comp_transform_equals_per_comp_transform():
@@ -164,7 +185,7 @@ def test_comp_membership_reports_dropped_frame(session):
 
 def test_comp_offsets_match_vphot_comp_columns(session):
     """Untransformed, a comp's offset is its General Report magnitude (measured
-    against the ensemble, as VPhot shows it) minus its catalog magnitude. With two
+    against the other comps, as VPhot shows it) minus its catalog magnitude. With two
     comps the offsets mirror each other."""
     offsets = session.comp_offsets(transformed=False)
     catalog = _catalog()

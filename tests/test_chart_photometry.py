@@ -1,7 +1,14 @@
 import pytest
+import requests
 from unittest.mock import MagicMock, patch
 
 from aavso_viewer.parsing.chart_photometry import fetch_chart_auids, fetch_chart_photometry
+
+@pytest.fixture(autouse=True)
+def chart_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr("aavso_viewer.parsing.chart_photometry.CACHE_DIR", tmp_path)
+    return tmp_path
+
 
 # A trimmed real response from https://apps.aavso.org/vsp/api/chart/X42923UD/?format=json
 SAMPLE_RESPONSE = {
@@ -86,3 +93,19 @@ def test_duplicate_chart_labels_named_like_vphot():
     assert (mags["105_1"]["V"].mag + mags["113"]["V"].mag + mags["119_1"]["V"].mag) / 3 == pytest.approx(11.258, abs=0.0005)
     assert auids["105_1"] == "000-BQM-378"
     assert auids["119"] == "000-BLP-292"
+
+
+def test_chart_falls_back_to_cache_when_service_is_down(chart_cache):
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = SAMPLE_RESPONSE
+    mock_resp.raise_for_status.return_value = None
+    with patch("aavso_viewer.parsing.chart_photometry.requests.get", return_value=mock_resp):
+        fetch_chart_photometry("X42923UD")
+    assert (chart_cache / "X42923UD.json").exists()
+
+    down = requests.exceptions.ReadTimeout("timed out")
+    with patch("aavso_viewer.parsing.chart_photometry.requests.get", side_effect=down):
+        assert fetch_chart_photometry("X42923UD")["108"]["R"].mag == 10.397
+        assert fetch_chart_auids("X42923UD")["103"] == "000-BKZ-381"
+        with pytest.raises(requests.exceptions.ReadTimeout):
+            fetch_chart_photometry("X99999ZZ")  # never fetched, no copy
