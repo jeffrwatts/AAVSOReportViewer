@@ -21,6 +21,7 @@ from aavso_viewer.transform.engine import (
     TransformResult,
     coefficient_sensitivity,
     comp_estimates,
+    ensemble_cross_check,
     ensemble_membership_problem,
     per_comp_estimates,
     transform_report,
@@ -226,6 +227,19 @@ class Session:
         self.attach_after_report(result.report, source=f"transformed in app with {coeffs.source}")
         self.after_coeffs = coeffs
         return result
+
+    def ensemble_cross_check(self) -> str | None:
+        """For a transformed ensemble: a warning if the transformed magnitudes (the
+        average comp) and the transformed per-comp estimates averaged disagree, or some
+        frames lost a comp (transform.engine.ensemble_cross_check). None when they
+        agree, or when it can't run (no General Report or catalog)."""
+        if not (self.is_ensemble and self.after is not None and self.after_coeffs is not None):
+            return None
+        try:
+            spread = self.comp_spread(transformed=True)
+        except ValueError:
+            return None
+        return ensemble_cross_check(self.after.df["MAG"], spread, len(self.comp_star_names()))
 
     def clear_transform(self) -> None:
         self.after = None

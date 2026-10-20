@@ -395,6 +395,40 @@ def comp_estimates(
     )
 
 
+# The per-comp estimates averaged (method B) should reproduce the report's ensemble
+# magnitude (method A) to within the General Report's 0.001 rounding (<= 0.0008 seen on
+# real sessions); a bigger gap means the two disagree about the data.
+CROSS_CHECK_LIMIT = 0.005
+
+
+def ensemble_cross_check(mag: pd.Series, spread: pd.DataFrame, n_comps: int) -> str | None:
+    """Compare the report's ensemble magnitudes (`mag`, the transform of the average
+    comp) with the per-comp estimates averaged (`spread`, comp_estimates() indexed like
+    `mag`). Returns a warning, or None if they agree and every frame used every comp.
+
+    A comp missing from some frames (a dropout) means the "average comp" is a different
+    set of stars in those frames than in the frames they're paired with for color, so
+    those frames' transform is suspect even when the averages happen to agree."""
+    spread = spread.reindex(mag.index)
+    problems = []
+    gap = (spread["mean"] - mag).abs()
+    off = int((gap > CROSS_CHECK_LIMIT).sum())
+    if off:
+        problems.append(
+            f"on {off} frame(s) the per-comp estimates average up to {gap.max():.3f} mag away from the "
+            "report's magnitude, so the General Report or catalog may not match the ensemble VPhot used"
+        )
+    short = int((spread["n"].fillna(0) < n_comps).sum())
+    if short:
+        problems.append(
+            f"{short} frame(s) used fewer than all {n_comps} comparison stars, so their average comp "
+            "differs from the frames they're paired with"
+        )
+    if not problems:
+        return None
+    return "Ensemble cross-check: " + "; ".join(problems) + "."
+
+
 @dataclass(frozen=True)
 class CoefficientSensitivity:
     """How far one filter's transformed target magnitude moves when the transform

@@ -32,6 +32,7 @@ from aavso_viewer.parsing.aavso_report import (
     report_from_frame,
 )
 from aavso_viewer.parsing.aavso_writer import ROW_COMMENTS_COLUMN, format_row
+from aavso_viewer.transform.engine import ensemble_cross_check
 
 # The check star should be within this many magnitudes of the target for its Std to
 # stand in for the target's uncertainty.
@@ -57,9 +58,6 @@ class ErrorMethod(str, Enum):
         }[self]
 
 
-# Per-comp estimates averaged should reproduce the report's own magnitude; a bigger
-# gap means the General Report or catalog doesn't match the ensemble VPhot used.
-_CONSISTENCY_LIMIT = 0.005
 
 
 def choose_method(combine: bool, target_varies: bool | None, is_ensemble: bool) -> ErrorMethod:
@@ -193,13 +191,9 @@ def _per_frame(
         out["MERR"] = np.hypot(spread["std"], out["MERR"]).round(3)
         for j in out.index:
             extra[j].update(NCOMP=str(int(spread.at[j, "n"])), COMPSTD=f"{spread.at[j, 'std']:.3f}")
-        gap = (spread["mean"] - report.df["MAG"]).abs()
-        if (gap > _CONSISTENCY_LIMIT).any():
-            warnings.append(
-                f"On {int((gap > _CONSISTENCY_LIMIT).sum())} frame(s) the per-comp estimates average up to "
-                f"{gap.max():.3f} mag away from the report's magnitude -- the General Report or catalog may "
-                "not match the ensemble VPhot used."
-            )
+        problem = ensemble_cross_check(report.df["MAG"], spread, int(spread["n"].max()))
+        if problem:
+            warnings.append(problem)
     out["NOTES"] = [
         "|" + "|".join(f"{k}={v}" for k, v in {**_parse_notes(n), **extra[j]}.items())
         for j, n in out["NOTES"].items()

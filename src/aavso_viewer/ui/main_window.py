@@ -286,6 +286,9 @@ class MainWindow(QMainWindow):
                 f"{len(result.skipped)} frame(s) couldn't be paired and stay untransformed (TRANS=NO):\n\n"
                 + "\n".join(result.skipped[:15]),
             )
+        problem = self.session.ensemble_cross_check()
+        if problem:
+            QMessageBox.warning(self, "Ensemble cross-check", problem)
 
     def _update_transform_menu(self) -> None:
         self._clear_transform_action.setEnabled(self.session.has_after_report)

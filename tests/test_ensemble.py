@@ -204,3 +204,26 @@ def test_comp_offsets_transformed_needs_in_app_transform(session):
     after = session.comp_offsets(transformed=True)
     assert list(after.columns) == session.filters
     assert set(after.index) == set(COMPS)
+
+
+def test_cross_check_passes_on_matching_reports(session):
+    session.apply_transform(_coeffs())
+    assert session.ensemble_cross_check() is None
+
+
+def test_cross_check_flags_mismatched_catalog(session, monkeypatch):
+    catalog = _catalog()
+    catalog["135"]["V"] = ChartMag(catalog["135"]["V"].mag + 0.1, 0.05)
+    monkeypatch.setattr("aavso_viewer.models.session.fetch_chart_photometry", lambda chart_id: catalog)
+    session = Session(session.aavso, session.general)
+    session.apply_transform(_coeffs())
+    assert "may not match" in session.ensemble_cross_check()
+
+
+def test_cross_check_flags_comp_dropout(session):
+    """A comp VPhot didn't measure in one frame leaves that frame's average comp a
+    different set of stars from the frames it's paired with for color."""
+    general = session.general.df
+    general.loc[general.index[general["Filter"] == "V"][0], "135"] = np.nan
+    session.apply_transform(_coeffs())
+    assert "fewer than all 2" in session.ensemble_cross_check()
