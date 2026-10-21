@@ -42,7 +42,7 @@ def ratio_tip(value: float | None, reference: float | None) -> str | None:
 # Next steps for a check star off by more than its catalog error (appended to ratio_tip).
 CHECK_TRY_TRANSFORM = (
     "Applying the transform (Transform → Apply Transform) often brings this within the "
-    "catalog error, especially in B."
+    "catalog error, especially when the check star and comparison stars differ in color."
 )
 CHECK_STILL_OUTSIDE = (
     "Still outside after the transform: check the coefficients, the chart's catalog values, "
