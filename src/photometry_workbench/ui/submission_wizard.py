@@ -285,7 +285,8 @@ class _LightCurvePage(QWizardPage):
                 "frame where the comparison stars agree closely gets a small uncertainty, and one where "
                 "they disagree gets a larger one.\n\n"
                 "That spread is combined with the target's SNR error (the two added in quadrature) to "
-                "give the uncertainty reported for the frame."
+                "give the uncertainty reported for the frame. So there's always some uncertainty: even "
+                "when the comparison stars agree perfectly, the target's own SNR error remains."
             )
         else:
             self.text.setText(
