@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from aavso_viewer.parsing.aavso_report import STANDARD_COLUMNS, AavsoReport
+from photometry_workbench.parsing.aavso_report import STANDARD_COLUMNS, AavsoReport
 
 # Header parameters, in the order VPhot and TransformApplier write them.
 HEADER_ORDER = ["TYPE", "OBSCODE", "SOFTWARE", "DELIM", "DATE", "OBSTYPE"]

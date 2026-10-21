@@ -15,8 +15,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from aavso_viewer.models.session import Session
-from aavso_viewer.ui import coloring
+from photometry_workbench.models.session import Session
+from photometry_workbench.ui import coloring
 
 # Missing-frame JDs listed in a membership cell's tooltip before it's cut short.
 _MAX_LISTED_FRAMES = 15

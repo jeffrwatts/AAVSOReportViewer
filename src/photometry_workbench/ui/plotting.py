@@ -8,7 +8,7 @@ import matplotlib.dates as mdates
 import pandas as pd
 from matplotlib.ticker import MaxNLocator
 
-from aavso_viewer.models.jd import jd_to_datetime
+from photometry_workbench.models.jd import jd_to_datetime
 
 ROLE_COLORS = {"target": "#1565c0", "check": "#c62828"}
 # VPhot's own filter-color convention -- B/V/R map onto the intuitive blue/green/red.

@@ -2,11 +2,11 @@ import pytest
 import requests
 from unittest.mock import MagicMock, patch
 
-from aavso_viewer.parsing.chart_photometry import fetch_chart_auids, fetch_chart_photometry
+from photometry_workbench.parsing.chart_photometry import fetch_chart_auids, fetch_chart_photometry
 
 @pytest.fixture(autouse=True)
 def chart_cache(tmp_path, monkeypatch):
-    monkeypatch.setattr("aavso_viewer.parsing.chart_photometry.CACHE_DIR", tmp_path)
+    monkeypatch.setattr("photometry_workbench.parsing.chart_photometry.CACHE_DIR", tmp_path)
     return tmp_path
 
 
@@ -41,7 +41,7 @@ def test_fetch_chart_photometry_parses_response():
     mock_resp.json.return_value = SAMPLE_RESPONSE
     mock_resp.raise_for_status.return_value = None
 
-    with patch("aavso_viewer.parsing.chart_photometry.requests.get", return_value=mock_resp) as mock_get:
+    with patch("photometry_workbench.parsing.chart_photometry.requests.get", return_value=mock_resp) as mock_get:
         result = fetch_chart_photometry("X42923UD")
 
     mock_get.assert_called_once()
@@ -59,7 +59,7 @@ def test_fetch_chart_auids_maps_labels():
     mock_resp.json.return_value = SAMPLE_RESPONSE
     mock_resp.raise_for_status.return_value = None
 
-    with patch("aavso_viewer.parsing.chart_photometry.requests.get", return_value=mock_resp):
+    with patch("photometry_workbench.parsing.chart_photometry.requests.get", return_value=mock_resp):
         assert fetch_chart_auids("X42923UD") == {"103": "000-BKZ-381", "108": "000-BKZ-357"}
 
 
@@ -82,7 +82,7 @@ def test_duplicate_chart_labels_named_like_vphot():
     mock_resp.json.return_value = DUPLICATE_LABELS_RESPONSE
     mock_resp.raise_for_status.return_value = None
 
-    with patch("aavso_viewer.parsing.chart_photometry.requests.get", return_value=mock_resp):
+    with patch("photometry_workbench.parsing.chart_photometry.requests.get", return_value=mock_resp):
         mags = fetch_chart_photometry("X43295PS")
         auids = fetch_chart_auids("X43295PS")
 
@@ -99,12 +99,12 @@ def test_chart_falls_back_to_cache_when_service_is_down(chart_cache):
     mock_resp = MagicMock()
     mock_resp.json.return_value = SAMPLE_RESPONSE
     mock_resp.raise_for_status.return_value = None
-    with patch("aavso_viewer.parsing.chart_photometry.requests.get", return_value=mock_resp):
+    with patch("photometry_workbench.parsing.chart_photometry.requests.get", return_value=mock_resp):
         fetch_chart_photometry("X42923UD")
     assert (chart_cache / "X42923UD.json").exists()
 
     down = requests.exceptions.ReadTimeout("timed out")
-    with patch("aavso_viewer.parsing.chart_photometry.requests.get", side_effect=down):
+    with patch("photometry_workbench.parsing.chart_photometry.requests.get", side_effect=down):
         assert fetch_chart_photometry("X42923UD")["108"]["R"].mag == 10.397
         assert fetch_chart_auids("X42923UD")["103"] == "000-BKZ-381"
         with pytest.raises(requests.exceptions.ReadTimeout):

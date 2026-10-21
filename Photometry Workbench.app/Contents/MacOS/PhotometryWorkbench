@@ -1,14 +1,14 @@
 #!/bin/bash
-# Launcher for the "AAVSO Report Viewer.app" Finder bundle. Locates the project
+# Launcher for the "Photometry Workbench.app" Finder bundle. Locates the project
 # folder relative to this script (four levels up: MacOS -> Contents -> the .app
 # -> project root) so the bundle keeps working if the project folder is moved,
 # as long as this .app stays inside it.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-LOG_FILE="$PROJECT_DIR/aavso-viewer.log"
+LOG_FILE="$PROJECT_DIR/photometry-workbench.log"
 
 {
     source "$PROJECT_DIR/.venv/bin/activate"
     export PYTHONPATH="$PROJECT_DIR/src"
-    exec python -m aavso_viewer.app
+    exec python -m photometry_workbench.app
 } >"$LOG_FILE" 2>&1

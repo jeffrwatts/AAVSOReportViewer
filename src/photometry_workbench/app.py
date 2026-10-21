@@ -4,11 +4,11 @@ import sys
 
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
-from aavso_viewer.models.session import Session
-from aavso_viewer.parsing.aavso_report import parse_aavso_report
-from aavso_viewer.parsing.general_report import parse_general_report
-from aavso_viewer.ui.main_window import MainWindow
-from aavso_viewer.ui.startup_dialog import StartupDialog
+from photometry_workbench.models.session import Session
+from photometry_workbench.parsing.aavso_report import parse_aavso_report
+from photometry_workbench.parsing.general_report import parse_general_report
+from photometry_workbench.ui.main_window import MainWindow
+from photometry_workbench.ui.startup_dialog import StartupDialog
 
 
 def main() -> int:

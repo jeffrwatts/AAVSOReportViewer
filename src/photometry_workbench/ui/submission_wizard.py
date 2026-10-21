@@ -24,10 +24,10 @@ from PySide6.QtWidgets import (
     QWizardPage,
 )
 
-from aavso_viewer.models.session import Session
-from aavso_viewer.parsing.aavso_report import AavsoReport
-from aavso_viewer.parsing.aavso_writer import format_report, write_aavso_report
-from aavso_viewer.submission.builder import (
+from photometry_workbench.models.session import Session
+from photometry_workbench.parsing.aavso_report import AavsoReport
+from photometry_workbench.parsing.aavso_writer import format_report, write_aavso_report
+from photometry_workbench.submission.builder import (
     CHECK_MAG_LIMIT,
     ErrorMethod,
     Submission,
@@ -36,8 +36,8 @@ from aavso_viewer.submission.builder import (
     choose_method,
     frame_consistency,
 )
-from aavso_viewer.transform.engine import untransformable_reason
-from aavso_viewer.ui import coloring
+from photometry_workbench.transform.engine import untransformable_reason
+from photometry_workbench.ui import coloring
 
 PAGE_SOURCE, PAGE_COMBINE, PAGE_VARIES, PAGE_LIGHT_CURVE, PAGE_PREVIEW = range(5)
 
@@ -282,7 +282,7 @@ class _PreviewPage(QWizardPage):
         layout.addWidget(self.notes)
         checks = QHBoxLayout()
         layout.addLayout(checks)
-        # The mentor's check for a combined point: the Std across frames should be about
+        # The consistency check for a combined point: the Std across frames should be about
         # the same as, or lower than, what a single frame's uncertainty predicts.
         self.consistency_box, self.consistency_table = _titled_table(
             checks, "Single frame vs across frames", ["Filter", "Single frame", "Across frames", "Ratio"]

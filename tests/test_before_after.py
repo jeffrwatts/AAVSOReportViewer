@@ -1,9 +1,9 @@
 import pytest
 
-from aavso_viewer.models.session import Session
-from aavso_viewer.parsing.aavso_report import parse_aavso_report
-from aavso_viewer.parsing.general_report import parse_general_report
-from aavso_viewer.ui import coloring
+from photometry_workbench.models.session import Session
+from photometry_workbench.parsing.aavso_report import parse_aavso_report
+from photometry_workbench.parsing.general_report import parse_general_report
+from photometry_workbench.ui import coloring
 
 from test_parsing import FIXTURES
 
@@ -56,7 +56,7 @@ def test_noise_floor_and_trend_populated_for_check_stars_only():
 
 def test_target_range_after_and_vsx_excess(monkeypatch):
     monkeypatch.setattr(
-        "aavso_viewer.models.session.fetch_vsx_range", lambda star_name: (10.5, 11.0)
+        "photometry_workbench.models.session.fetch_vsx_range", lambda star_name: (10.5, 11.0)
     )
     session = _cy_aqr_before_after_session()
     target_rows = {r.filt: r for r in session.build_summary_rows() if r.section == "Targets"}
@@ -103,8 +103,8 @@ def test_coloring_thresholds():
     assert coloring.trend_color(-0.06) == coloring.FLAG
     assert coloring.trend_color(None) is None
 
-    # Absolute thresholds per Jeff's mentor -- not a ratio to the photon-noise floor,
-    # which flagged nearly every real session red (see aavso-evaluation-progress.md).
+    # Absolute thresholds -- not a ratio to the photon-noise floor, which flagged
+    # nearly every real session red.
     assert coloring.std_color(0.003) == coloring.GOOD
     assert coloring.std_color(0.008) == coloring.BORDERLINE
     assert coloring.std_color(0.02) == coloring.FLAG

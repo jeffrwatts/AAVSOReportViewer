@@ -1,16 +1,16 @@
 import pytest
 
-from aavso_viewer.parsing.aavso_report import parse_aavso_report, report_from_frame
-from aavso_viewer.parsing.aavso_writer import write_aavso_report
-from aavso_viewer.submission.builder import (
+from photometry_workbench.parsing.aavso_report import parse_aavso_report, report_from_frame
+from photometry_workbench.parsing.aavso_writer import write_aavso_report
+from photometry_workbench.submission.builder import (
     ErrorMethod,
     SubmissionError,
     build_submission,
     choose_method,
     frame_consistency,
 )
-from aavso_viewer.transform.coefficients import parse_tg_ini
-from aavso_viewer.transform.engine import transform_report
+from photometry_workbench.transform.coefficients import parse_tg_ini
+from photometry_workbench.transform.engine import transform_report
 
 from test_parsing import FIXTURES
 
@@ -57,7 +57,7 @@ def test_sn_2026aaiv_combined_target_std():
     assert "NCOMB=5" in notes and "MERRMETHOD=STD_TARGET" in notes
     assert "CREFMAG=13.928" in notes  # constant keys carried over
     assert sub.warnings == []
-    assert sub.report.header["SOFTWARE"].startswith("VPhot 4.0.83 + AAVSO Report Viewer")
+    assert sub.report.header["SOFTWARE"].startswith("VPhot 4.0.83 + Photometry Workbench")
 
 
 def test_sn_2026aaiv_combined_check_std():
@@ -107,7 +107,7 @@ def test_comp_spread_needs_the_spread():
 
 
 def test_frame_consistency_sn_transformed():
-    """The mentor's check on the real SN 2026aaiv submission: the transformed frames'
+    """The consistency check on the real SN 2026aaiv submission: the transformed frames'
     Std is 1.5x or more their per-frame MERR in every filter (B most, ~2.7x) -- each
     frame's own noisy color inflates the scatter."""
     raw = parse_aavso_report(FIXTURES / f"{SN}.txt")

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import requests
 
-from aavso_viewer.parsing.aavso_api import auth_headers
+from photometry_workbench.parsing.aavso_api import auth_headers
 
 _VSX_URL = "https://vsx.aavso.org/index.php"
 

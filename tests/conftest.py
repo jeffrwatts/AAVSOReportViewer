@@ -8,4 +8,4 @@ def no_live_vsx_fetch(monkeypatch):
     would otherwise make a live request -- stub it out by default so the suite stays
     fast and offline-safe. Tests that specifically exercise VSX behavior can override
     this with their own monkeypatch.setattr call (which takes precedence)."""
-    monkeypatch.setattr("aavso_viewer.models.session.fetch_vsx_range", lambda star_name: None)
+    monkeypatch.setattr("photometry_workbench.models.session.fetch_vsx_range", lambda star_name: None)

@@ -21,15 +21,16 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from aavso_viewer.models.session import Session
-from aavso_viewer.transform.coefficients import TransformCoefficients, parse_tg_ini
-from aavso_viewer.transform.engine import describe_set, transform_set
+from photometry_workbench import APP_ID
+from photometry_workbench.models.session import Session
+from photometry_workbench.transform.coefficients import TransformCoefficients, parse_tg_ini
+from photometry_workbench.transform.engine import describe_set, transform_set
 
 SETTINGS_KEY = "transform/coefficients_path"
 
 
 def settings() -> QSettings:
-    return QSettings("AAVSOReportViewer", "AAVSOReportViewer")
+    return QSettings(APP_ID, APP_ID)
 
 
 class TransformDialog(QDialog):

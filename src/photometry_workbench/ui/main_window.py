@@ -18,33 +18,33 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from aavso_viewer.models.session import (
+from photometry_workbench import APP_NAME
+from photometry_workbench.models.session import (
     SECTION_CHECK,
     SECTION_COMPARISON,
     SECTION_TARGETS,
     Session,
 )
-from aavso_viewer.parsing.aavso_report import parse_aavso_report
-from aavso_viewer.parsing.general_report import parse_general_report
-from aavso_viewer.transform.engine import untransformable_reason
-from aavso_viewer.ui import coloring, plotting
-from aavso_viewer.ui.chart_detail_dialog import (
+from photometry_workbench.parsing.aavso_report import parse_aavso_report
+from photometry_workbench.parsing.general_report import parse_general_report
+from photometry_workbench.transform.engine import untransformable_reason
+from photometry_workbench.ui import coloring, plotting
+from photometry_workbench.ui.chart_detail_dialog import (
     CheckBeforeAfterDetailDialog,
     CompStarsDetailDialog,
     DiagnosticDetailDialog,
     LightCurveDetailDialog,
     TargetBeforeAfterDetailDialog,
 )
-from aavso_viewer.ui.chart_thumbnail import ChartThumbnail
-from aavso_viewer.ui.ensemble_dialog import EnsembleCompsDialog
-from aavso_viewer.ui.share_plot_dialog import SharePlotDialog
-from aavso_viewer.ui.startup_dialog import StartupDialog
-from aavso_viewer.ui.submission_wizard import SubmissionWizard
-from aavso_viewer.ui.transform_dialog import TransformDialog
+from photometry_workbench.ui.chart_thumbnail import ChartThumbnail
+from photometry_workbench.ui.ensemble_dialog import EnsembleCompsDialog
+from photometry_workbench.ui.share_plot_dialog import SharePlotDialog
+from photometry_workbench.ui.startup_dialog import StartupDialog
+from photometry_workbench.ui.submission_wizard import SubmissionWizard
+from photometry_workbench.ui.transform_dialog import TransformDialog
 
 # Column order. The "(After)" columns are hidden entirely (not just blank) unless the
-# transform has been applied, matching Jeff's established lean-table preference --
-# see feedback-notebook-table-iteration.md.
+# transform has been applied, to keep the table lean.
 TABLE_COLUMNS = [
     "Star", "Filter", "Average", "Average (After)", "Range", "Range (After)",
     "Std", "Std (After)", "KREFERR", "VSX Range", "Avg. SNR",
@@ -54,8 +54,8 @@ _AFTER_ONLY_COLUMNS = ["Average (After)", "Range (After)", "Std (After)"]
 COLOR_TABLE_COLUMNS = ["Star", "Index", "Catalog", "Measured", "Measured (After)", "Catalog Err"]
 _COLOR_AFTER_ONLY_COLUMNS = ["Measured (After)"]
 # Noise Floor and Trend are still computed (Session.build_summary_rows) and still
-# drive Std's coloring, but per Jeff's simplification request they're no longer shown
-# as their own columns -- matches the notebook's leaner Check Stars table shape.
+# drive Std's coloring, but they're not shown as their own
+# columns, to keep the table lean.
 
 _DIAGNOSTIC_SPECS = [
     # (General Report column, thumbnail title, ylabel)
@@ -120,7 +120,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.session = session
 
-        self.setWindowTitle("AAVSO Report Viewer")
+        self.setWindowTitle(APP_NAME)
 
         self._build_menu()
 
@@ -365,9 +365,9 @@ class MainWindow(QMainWindow):
                 # variable stars (check/comparison) -- a target's own Std reflects
                 # real astrophysical variability too (rapid pulsators like CY Aqr
                 # routinely swing 0.1+ mag per session), so coloring it against the
-                # mentor's precision guide would be a category error. The check
-                # star's colored Std already serves, per the mentor, as the intended
-                # proxy for the target's likely measurement error.
+                # precision guide would be a category error. The check star's
+                # colored Std already serves as the proxy for the target's likely
+                # measurement error.
                 self.table.setItem(r, 6, self._numeric_item(row.std, row.needs_general_report, None if is_target else coloring.std_color(row.std)))
                 self.table.setItem(r, 7, self._numeric_item(row.std_after, False, None if is_target else coloring.std_color(row.std_after)))
                 self.table.setItem(r, 8, self._numeric_item(row.kreferr))

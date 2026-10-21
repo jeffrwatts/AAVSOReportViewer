@@ -27,14 +27,15 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from aavso_viewer.parsing.aavso_report import (
+from photometry_workbench import APP_NAME
+from photometry_workbench.parsing.aavso_report import (
     STANDARD_COLUMNS,
     AavsoReport,
     _parse_notes,
     report_from_frame,
 )
-from aavso_viewer.parsing.aavso_writer import ROW_COMMENTS_COLUMN, format_row
-from aavso_viewer.transform.coefficients import TransformCoefficients
+from photometry_workbench.parsing.aavso_writer import ROW_COMMENTS_COLUMN, format_row
+from photometry_workbench.transform.coefficients import TransformCoefficients
 
 # Farthest apart (in days, ~14 min) two frames in different filters can be and still
 # be paired into one transform group. Normal cycles are a minute or two apart; this
@@ -309,7 +310,7 @@ def transform_report(
         ]
         transformed += 1
 
-    comments = [f"#  AAVSO Report Viewer transform ({set_name}), coefficients from {coeffs.source}"]
+    comments = [f"#  {APP_NAME} transform ({set_name}), coefficients from {coeffs.source}"]
     comments += coeffs.header_lines()
     new_report = report_from_frame(out, header=report.header, comments=comments, source_path=report.source_path)
     return TransformResult(new_report, set_name, transformed, skipped)
@@ -444,8 +445,8 @@ class CoefficientSensitivity:
 
 def coefficient_sensitivity(report: AavsoReport, coeffs: TransformCoefficients) -> dict[str, CoefficientSensitivity]:
     """Per filter, the shift in the mean transformed target magnitude from moving each
-    coefficient the transform uses by ± its error, one at a time (the check Jeff's
-    mentor suggested). The shift scales with the target-minus-comp color, so it's
+    coefficient the transform uses by ± its error, one at a time (a check suggested by an
+    AAVSO mentor). The shift scales with the target-minus-comp color, so it's
     small for color-matched comps and grows for a red target against blue comps.
     Coefficients with no error are skipped; empty if none have one."""
     _, rules = transform_set(report.filters)

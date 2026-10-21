@@ -12,8 +12,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from aavso_viewer.models.session import Session
-from aavso_viewer.ui import plotting
+from photometry_workbench.models.session import Session
+from photometry_workbench.ui import plotting
 
 
 class FilterCheckboxRow(QWidget):

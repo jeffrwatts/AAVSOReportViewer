@@ -1,5 +1,5 @@
-"""Shared 3-tier accuracy/precision coloring, thresholds confirmed directly by Jeff's
-AAVSO mentor -- one coloring rule used everywhere (Average deltas, Std, comparison-star
+"""Shared 3-tier accuracy/precision coloring, with thresholds from experienced AAVSO
+observers' guidance -- one coloring rule used everywhere (Average deltas, Std, comparison-star
 deltas, Trend, VSX range), not a different rule per table.
 """
 
@@ -25,14 +25,12 @@ def ratio_color(value: float | None, reference: float | None) -> QColor | None:
     return FLAG
 
 
-# Precision guide, per Jeff's AAVSO mentor directly (not a ratio to the photon-noise
-# floor, which he called merely "a quick way to get a feel" -- not a hard threshold,
-# and one that flagged essentially every real session red since actual scatter is
-# structurally dominated by non-photon noise, not achievable photon-limited precision).
-# His actual numbers: "the usual guide is to make measurements so that statistical
-# error is < 0.01 mag for the variable, comparison and check stars" (STD_ACCEPTABLE),
-# and "with your equipment, you are not likely to get much better than 0.005 mag
-# consistency" (STD_GOOD) -- so applies to all three star roles, not just check stars.
+# Precision guide, in absolute magnitudes rather than as a ratio to the photon-noise
+# floor (that ratio is only a rough feel, and flags nearly every real session red,
+# since real scatter is dominated by non-photon noise). The usual guide is statistical
+# error under 0.01 mag for the variable, comparison and check stars alike
+# (STD_ACCEPTABLE); about 0.005 mag is a realistic best for a small telescope
+# (STD_GOOD).
 STD_GOOD = 0.005
 STD_ACCEPTABLE = 0.01
 
@@ -47,7 +45,7 @@ def std_color(std: float | None) -> QColor | None:
     return FLAG
 
 
-# Extinction/flatness-over-time guide: mentor's rule of thumb is atmospheric
+# Extinction/flatness-over-time guide: a common rule of thumb is that atmospheric
 # extinction is usually <~0.05 mag for a time series with a significant airmass
 # swing -- used to color a check star's magnitude-vs-airmass trend.
 TREND_LIMIT = 0.05
@@ -59,7 +57,7 @@ def trend_color(trend: float | None) -> QColor | None:
     return GOOD if abs(trend) <= TREND_LIMIT else FLAG
 
 
-# VSX range tolerance: per the mentor, don't fuss over VSX range differences under
+# VSX range tolerance: don't fuss over VSX range differences under
 # ~0.1 mag -- VSX's published range is just the observed min/max in the database, not
 # authoritative. A small overshoot beyond either edge is borderline, not a flag.
 RANGE_TOLERANCE = 0.1
@@ -80,7 +78,7 @@ def range_color(excess: float | None) -> QColor | None:
 # Before/after improvement guide for color indices: catalog color errors (~0.1 mag)
 # swamp typical deltas, so judging against them turns everything green. Instead judge
 # whether the transform moved the measured color closer to catalog. A change within
-# STD_GOOD (the best consistency the mentor expects from Jeff's equipment) is too small
+# STD_GOOD (a realistic best consistency for a small telescope) is too small
 # to call either way. Getting worse is only flagged once the result also falls outside
 # the catalog error -- worse-but-still-within-catalog-error is borderline, not a flag.
 IMPROVEMENT_TOLERANCE = STD_GOOD
@@ -103,8 +101,8 @@ def improvement_color(
 
 def consistency_color(ratio: float | None) -> QColor | None:
     """The Std across frames vs the single-frame uncertainty (submission.builder.
-    frame_consistency): fine below the mentor's 1.5x, flagged at or above it."""
-    from aavso_viewer.submission.builder import CONSISTENCY_LIMIT
+    frame_consistency): fine below 1.5x, flagged at or above it."""
+    from photometry_workbench.submission.builder import CONSISTENCY_LIMIT
 
     if ratio is None or ratio != ratio:
         return None

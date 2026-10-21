@@ -18,9 +18,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from aavso_viewer.models.session import Session
-from aavso_viewer.ui import plotting
-from aavso_viewer.ui.chart_detail_dialog import FilterCheckboxRow
+from photometry_workbench.models.session import Session
+from photometry_workbench.ui import plotting
+from photometry_workbench.ui.chart_detail_dialog import FilterCheckboxRow
 
 _TIME_MODES = [("Julian Date (JD)", "jd"), ("UTC", "utc"), ("HST", "hst")]
 

@@ -7,14 +7,14 @@ import json
 import numpy as np
 import pytest
 
-from aavso_viewer.models.session import Session
-from aavso_viewer.parsing.aavso_report import parse_aavso_report
-from aavso_viewer.parsing.aavso_writer import write_aavso_report
-from aavso_viewer.parsing.chart_photometry import _BAND_TO_FILTER, ChartMag
-from aavso_viewer.parsing.general_report import parse_general_report
-from aavso_viewer.submission.builder import ErrorMethod, SubmissionError, build_submission, frame_consistency
-from aavso_viewer.transform.coefficients import parse_tg_ini
-from aavso_viewer.transform.engine import TransformError, comp_estimates, per_comp_estimates, transform_report
+from photometry_workbench.models.session import Session
+from photometry_workbench.parsing.aavso_report import parse_aavso_report
+from photometry_workbench.parsing.aavso_writer import write_aavso_report
+from photometry_workbench.parsing.chart_photometry import _BAND_TO_FILTER, ChartMag
+from photometry_workbench.parsing.general_report import parse_general_report
+from photometry_workbench.submission.builder import ErrorMethod, SubmissionError, build_submission, frame_consistency
+from photometry_workbench.transform.coefficients import parse_tg_ini
+from photometry_workbench.transform.engine import TransformError, comp_estimates, per_comp_estimates, transform_report
 
 from test_parsing import FIXTURES
 
@@ -37,9 +37,9 @@ def _coeffs():
 
 @pytest.fixture
 def session(monkeypatch):
-    monkeypatch.setattr("aavso_viewer.models.session.fetch_chart_photometry", lambda chart_id: _catalog())
+    monkeypatch.setattr("photometry_workbench.models.session.fetch_chart_photometry", lambda chart_id: _catalog())
     monkeypatch.setattr(
-        "aavso_viewer.models.session.fetch_chart_auids", lambda chart_id: {"121": "000-BQG-057"}
+        "photometry_workbench.models.session.fetch_chart_auids", lambda chart_id: {"121": "000-BQG-057"}
     )
     return Session(parse_aavso_report(ENSEMBLE), parse_general_report(GENERAL))
 
@@ -99,7 +99,7 @@ def test_ensemble_transform_output(session):
 
 
 def test_ensemble_transform_without_general_report(monkeypatch):
-    monkeypatch.setattr("aavso_viewer.models.session.fetch_chart_auids", lambda chart_id: {})
+    monkeypatch.setattr("photometry_workbench.models.session.fetch_chart_auids", lambda chart_id: {})
     session = Session(parse_aavso_report(ENSEMBLE))
     df = session.apply_transform(_coeffs()).report.df
     assert (df["TRANS"] == "YES").all()
@@ -116,7 +116,7 @@ def test_partial_ensemble_membership_is_refused(session):
 
 
 def test_comp_spread_submission(session, tmp_path):
-    """MERR is the plain Std across the comps (Technique #3, as the mentor confirmed --
+    """MERR is the plain Std across the comps (Technique #3 --
     not Std/sqrt(N)) combined with the SNR uncertainty."""
     session.apply_transform(_coeffs())
     spread = session.comp_spread(transformed=True)
@@ -144,7 +144,7 @@ def test_comp_spread_needs_two_comps(session):
 def test_comp_spread_flags_mismatched_catalog(session, monkeypatch):
     catalog = _catalog()
     catalog["135"]["V"] = ChartMag(catalog["135"]["V"].mag + 0.1, 0.05)
-    monkeypatch.setattr("aavso_viewer.models.session.fetch_chart_photometry", lambda chart_id: catalog)
+    monkeypatch.setattr("photometry_workbench.models.session.fetch_chart_photometry", lambda chart_id: catalog)
     spread = Session(session.aavso, session.general).comp_spread(transformed=False)
     sub = build_submission(session.aavso, ErrorMethod.COMP_SPREAD, comp_spread=spread)
     assert sub.warnings and "may not match" in sub.warnings[0]
@@ -214,7 +214,7 @@ def test_cross_check_passes_on_matching_reports(session):
 def test_cross_check_flags_mismatched_catalog(session, monkeypatch):
     catalog = _catalog()
     catalog["135"]["V"] = ChartMag(catalog["135"]["V"].mag + 0.1, 0.05)
-    monkeypatch.setattr("aavso_viewer.models.session.fetch_chart_photometry", lambda chart_id: catalog)
+    monkeypatch.setattr("photometry_workbench.models.session.fetch_chart_photometry", lambda chart_id: catalog)
     session = Session(session.aavso, session.general)
     session.apply_transform(_coeffs())
     assert "may not match" in session.ensemble_cross_check()

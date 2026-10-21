@@ -9,13 +9,13 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from aavso_viewer.models.jd import jd_to_date
-from aavso_viewer.parsing.aavso_report import AavsoReport
-from aavso_viewer.parsing.chart_photometry import ChartMag, fetch_chart_auids, fetch_chart_photometry
-from aavso_viewer.parsing.general_report import GeneralReport
-from aavso_viewer.parsing.vsx import fetch_vsx_range
-from aavso_viewer.transform.coefficients import TransformCoefficients, parse_report_header
-from aavso_viewer.transform.engine import (
+from photometry_workbench.models.jd import jd_to_date
+from photometry_workbench.parsing.aavso_report import AavsoReport
+from photometry_workbench.parsing.chart_photometry import ChartMag, fetch_chart_auids, fetch_chart_photometry
+from photometry_workbench.parsing.general_report import GeneralReport
+from photometry_workbench.parsing.vsx import fetch_vsx_range
+from photometry_workbench.transform.coefficients import TransformCoefficients, parse_report_header
+from photometry_workbench.transform.engine import (
     CoefficientSensitivity,
     TransformError,
     TransformResult,

@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from aavso_viewer.models.session import Session
-from aavso_viewer.parsing.aavso_report import parse_aavso_report
-from aavso_viewer.parsing.general_report import parse_general_report
+from photometry_workbench.models.session import Session
+from photometry_workbench.parsing.aavso_report import parse_aavso_report
+from photometry_workbench.parsing.general_report import parse_general_report
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -161,7 +161,7 @@ def test_ensemble_detection_and_comp_star_curves(monkeypatch):
     # test_fetch_chart_photometry_parses_response, and verified against the live
     # API manually).
     monkeypatch.setattr(
-        "aavso_viewer.models.session.fetch_chart_photometry", lambda chart_id: {}
+        "photometry_workbench.models.session.fetch_chart_photometry", lambda chart_id: {}
     )
 
     report = parse_aavso_report(FIXTURES / "AAVSOReport_YZ-Boo_Ensemble_Synthetic.txt")
@@ -190,7 +190,7 @@ def test_ensemble_comp_catalog_mag_uses_chart_photometry(monkeypatch):
     the same way KREFERR is for check stars) comes from the chart API, keyed by star
     label + filter -- not from the AAVSO report's NOTES field, which only ever carries
     one aggregate CREFMAG for the whole ensemble."""
-    from aavso_viewer.parsing.chart_photometry import ChartMag
+    from photometry_workbench.parsing.chart_photometry import ChartMag
 
     fake_chart = {
         "103": {"V": ChartMag(10.334, 0.047), "B": ChartMag(11.364, 0.09)},
@@ -198,7 +198,7 @@ def test_ensemble_comp_catalog_mag_uses_chart_photometry(monkeypatch):
         # "114", "118", "119" deliberately absent -- simulates a partial/failed match.
     }
     monkeypatch.setattr(
-        "aavso_viewer.models.session.fetch_chart_photometry", lambda chart_id: fake_chart
+        "photometry_workbench.models.session.fetch_chart_photometry", lambda chart_id: fake_chart
     )
 
     report = parse_aavso_report(FIXTURES / "AAVSOReport_YZ-Boo_Ensemble_Synthetic.txt")

@@ -1,5 +1,5 @@
-from aavso_viewer.models.session import Session
-from aavso_viewer.parsing.aavso_report import parse_aavso_report
+from photometry_workbench.models.session import Session
+from photometry_workbench.parsing.aavso_report import parse_aavso_report
 
 from test_parsing import FIXTURES
 

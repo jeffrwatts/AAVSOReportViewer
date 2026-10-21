@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from photometry_workbench import APP_NAME
+
 
 class _FilePickerRow:
     def __init__(self, grid: QGridLayout, row: int, label: str, description: str):
@@ -44,7 +46,7 @@ class StartupDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("AAVSO Report Viewer")
+        self.setWindowTitle(APP_NAME)
         self.setMinimumWidth(480)
 
         layout = QVBoxLayout(self)

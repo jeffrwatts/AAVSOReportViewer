@@ -3,19 +3,19 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>AAVSO Report Viewer</string>
+    <string>Photometry Workbench</string>
     <key>CFBundleDisplayName</key>
-    <string>AAVSO Report Viewer</string>
+    <string>Photometry Workbench</string>
     <key>CFBundleIdentifier</key>
-    <string>com.jeffwatts.aavsoreportviewer</string>
+    <string>com.jeffwatts.photometryworkbench</string>
     <key>CFBundleVersion</key>
-    <string>0.1.0</string>
+    <string>1.0.0</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>1.0.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
-    <string>AAVSOViewer</string>
+    <string>PhotometryWorkbench</string>
     <key>LSMinimumSystemVersion</key>
     <string>10.14</string>
     <key>NSHighResolutionCapable</key>

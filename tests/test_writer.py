@@ -1,10 +1,10 @@
 import pandas as pd
 import pytest
 
-from aavso_viewer.parsing.aavso_report import STANDARD_COLUMNS, parse_aavso_report
-from aavso_viewer.parsing.aavso_writer import format_report, write_aavso_report
-from aavso_viewer.transform.coefficients import parse_tg_ini
-from aavso_viewer.transform.engine import transform_report
+from photometry_workbench.parsing.aavso_report import STANDARD_COLUMNS, parse_aavso_report
+from photometry_workbench.parsing.aavso_writer import format_report, write_aavso_report
+from photometry_workbench.transform.coefficients import parse_tg_ini
+from photometry_workbench.transform.engine import transform_report
 
 from test_parsing import FIXTURES
 
@@ -74,7 +74,7 @@ def test_writer_rejects_invalid_fields(tmp_path):
 
 
 def test_ta_header_comments_kept_and_carried_into_submission(tmp_path):
-    from aavso_viewer.submission.builder import ErrorMethod, build_submission
+    from photometry_workbench.submission.builder import ErrorMethod, build_submission
 
     ta = parse_aavso_report(FIXTURES / "AAVSOReport_SN-2026aaiv_BVR_20261011_TA.txt")
     assert ta.comments[0] == "#  TransformApplier, V2.71"

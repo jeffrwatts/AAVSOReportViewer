@@ -12,27 +12,26 @@ so the CCD-equation branch never comes up):
   - one comparison star: the SNR-based per-frame MERR.
 
 Std here is the per-frame standard deviation, not the standard deviation of the mean --
-for the comp spread too, as the uncertainty course's Technique #3 intends (confirmed by
-Jeff's AAVSO mentor).
+for the comp spread too, as the uncertainty course's Technique #3 intends.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from importlib.metadata import PackageNotFoundError, version
 
 import numpy as np
 import pandas as pd
 
-from aavso_viewer.parsing.aavso_report import (
+from photometry_workbench import APP_NAME, app_version
+from photometry_workbench.parsing.aavso_report import (
     STANDARD_COLUMNS,
     AavsoReport,
     _parse_notes,
     report_from_frame,
 )
-from aavso_viewer.parsing.aavso_writer import ROW_COMMENTS_COLUMN, format_row
-from aavso_viewer.transform.engine import ensemble_cross_check
+from photometry_workbench.parsing.aavso_writer import ROW_COMMENTS_COLUMN, format_row
+from photometry_workbench.transform.engine import ensemble_cross_check
 
 # The check star should be within this many magnitudes of the target for its Std to
 # stand in for the target's uncertainty.
@@ -77,13 +76,6 @@ class Submission:
     report: AavsoReport
     method: ErrorMethod
     warnings: list[str] = field(default_factory=list)
-
-
-def app_version() -> str:
-    try:
-        return version("aavso-viewer")
-    except PackageNotFoundError:
-        return "dev"
 
 
 def _decimals(text: str) -> int:
@@ -203,7 +195,7 @@ def _per_frame(
 
 @dataclass(frozen=True)
 class FrameConsistency:
-    """One filter of the mentor's consistency check for a combined point: the
+    """One filter of the consistency check for a combined point: the
     uncertainty a single frame carries vs the scatter actually seen across the frames.
     The scatter should be about the same or lower; well above it (CONSISTENCY_LIMIT),
     something is off -- one bad frame, clouds -- worth tracking down."""
@@ -220,7 +212,7 @@ class FrameConsistency:
         return self.across / self.single if self.single else np.nan
 
 
-# Per Jeff's AAVSO mentor: a Std across frames 1.5x or more the single-frame estimate
+# AAVSO mentor guidance: a Std across frames 1.5x or more the single-frame estimate
 # means something needs tracking down.
 CONSISTENCY_LIMIT = 1.5
 
@@ -258,7 +250,7 @@ def build_submission(
 
     header = dict(report.header)
     original = header.get("SOFTWARE")
-    ours = f"AAVSO Report Viewer {app_version()}"
+    ours = f"{APP_NAME} {app_version()}"
     header["SOFTWARE"] = f"{original} + {ours}" if original else ours
     comments = [*report.comments, f"#  {ours}: {method.description}"]
     return Submission(

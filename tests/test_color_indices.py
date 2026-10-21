@@ -1,7 +1,7 @@
 import pytest
 
-from aavso_viewer.models.session import Session
-from aavso_viewer.parsing.aavso_report import parse_aavso_report
+from photometry_workbench.models.session import Session
+from photometry_workbench.parsing.aavso_report import parse_aavso_report
 
 from test_before_after import _cy_aqr_before_after_session
 from test_parsing import FIXTURES
@@ -36,7 +36,7 @@ def test_single_filter_session_has_no_color_indices():
 
 
 def test_improvement_color():
-    from aavso_viewer.ui import coloring
+    from photometry_workbench.ui import coloring
 
     assert coloring.improvement_color(0.174, 0.037) == coloring.GOOD
     # Overshooting past catalog still counts if it lands closer.

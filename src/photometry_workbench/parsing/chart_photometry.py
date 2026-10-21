@@ -16,7 +16,8 @@ from pathlib import Path
 
 import requests
 
-from aavso_viewer.parsing.aavso_api import APPS_BASE_URL, auth_headers
+from photometry_workbench import APP_ID
+from photometry_workbench.parsing.aavso_api import APPS_BASE_URL, auth_headers
 
 # www.aavso.org/vsp is Cloudflare-blocked for scripted requests -- see aavso_api.
 _CHART_URL = APPS_BASE_URL + "/vsp/api/chart/{chart_id}/"
@@ -28,7 +29,7 @@ _BAND_TO_FILTER = {"Rc": "R", "Ic": "I"}
 # Every successful chart fetch is saved here, and used when the chart service can't be
 # reached (it was down for days in October 2026), so a session that loaded once keeps
 # working offline.
-CACHE_DIR = Path.home() / "Library/Caches/AAVSOReportViewer/charts"
+CACHE_DIR = Path.home() / "Library/Caches" / APP_ID / "charts"
 
 
 @dataclass

@@ -3,9 +3,9 @@ import re
 import numpy as np
 import pytest
 
-from aavso_viewer.parsing.aavso_report import parse_aavso_report, report_from_frame
-from aavso_viewer.transform.coefficients import parse_report_header, parse_tg_ini
-from aavso_viewer.transform.engine import (
+from photometry_workbench.parsing.aavso_report import parse_aavso_report, report_from_frame
+from photometry_workbench.transform.coefficients import parse_report_header, parse_tg_ini
+from photometry_workbench.transform.engine import (
     TransformError,
     _needs,
     transform_report,
@@ -131,10 +131,10 @@ def test_frame_without_partner_is_left_untransformed():
 
 
 def test_coefficient_sensitivity_sn_2026aaiv():
-    """Mentor's suggested check: move each coefficient by its error. For SN 2026aaiv
+    """Coefficient-sensitivity check: move each coefficient by its error. For SN 2026aaiv
     with the VIS coefficients it's ~0.003-0.004 per filter, well under the target's
     scatter, and each filter is driven by its own color coefficient."""
-    from aavso_viewer.transform.engine import coefficient_sensitivity
+    from photometry_workbench.transform.engine import coefficient_sensitivity
 
     raw = parse_aavso_report(FIXTURES / "AAVSOReport_SN-2026aaiv_BVR_20261011.txt")
     result = coefficient_sensitivity(raw, parse_tg_ini(FIXTURES / "SA114-VIS.ini"))
@@ -154,7 +154,7 @@ def test_coefficient_sensitivity_sn_2026aaiv():
 def test_session_coefficient_sensitivity_from_ta_header(name):
     """A loaded TA report supplies its coefficients through its header. For the bright
     light curves (CY Aqr, YZ Boo) the systematic exceeds the SNR-based MERR."""
-    from aavso_viewer.models.session import Session
+    from photometry_workbench.models.session import Session
 
     session = Session(parse_aavso_report(FIXTURES / f"{name}.txt"))
     with pytest.raises(ValueError):
@@ -171,8 +171,8 @@ def test_session_coefficient_sensitivity_from_ta_header(name):
 
 
 def test_coefficient_sensitivity_needs_errors():
-    from aavso_viewer.transform.coefficients import TransformCoefficients
-    from aavso_viewer.transform.engine import coefficient_sensitivity
+    from photometry_workbench.transform.coefficients import TransformCoefficients
+    from photometry_workbench.transform.engine import coefficient_sensitivity
 
     raw = parse_aavso_report(FIXTURES / "AAVSOReport_SN-2026aaiv_BVR_20261011.txt")
     coeffs = parse_tg_ini(FIXTURES / "SA114-VIS.ini")
