@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QRadioButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -43,6 +44,8 @@ from photometry_workbench.ui import coloring
 from photometry_workbench.ui.example_diagrams import combine_diagram, light_curve_diagram
 
 PAGE_SOURCE, PAGE_COMBINE, PAGE_VARIES, PAGE_LIGHT_CURVE, PAGE_PREVIEW = range(5)
+
+_CAPTION_WIDTH = 540
 
 _PREVIEW_COLUMNS = ["DATE", "MAG", "MERR", "FILT", "TRANS", "CNAME", "KNAME", "AMASS", "GROUP"]
 _PREVIEW_FORMATS = {"DATE": "{:.6f}", "MAG": "{:.3f}", "MERR": "{:.3f}", "AMASS": "{:.4f}"}
@@ -123,7 +126,12 @@ def _titled_table(
     layout.setContentsMargins(0, 0, 0, 0)
     layout.addWidget(QLabel(title))
     if caption:
-        layout.addWidget(_wrapped(caption, gray=True))
+        # A fixed width lets the wrapped caption claim its full height; beside another
+        # table in a row, Qt would otherwise squeeze it.
+        label = _wrapped(caption, gray=True)
+        label.setFixedWidth(_CAPTION_WIDTH)
+        label.setMinimumHeight(label.heightForWidth(_CAPTION_WIDTH))
+        layout.addWidget(label)
     table = _read_only_table(columns)
     layout.addWidget(table)
     layout.addStretch()
@@ -341,7 +349,17 @@ class _PreviewPage(QWizardPage):
         self._wizard = wizard
         self.setTitle("Check the report before saving")
         self.setFinalPage(True)
-        layout = QVBoxLayout(self)
+        # The page scrolls in a small window instead of squeezing its tables together.
+        body = QWidget()
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setWidget(body)
+        page_layout = QVBoxLayout(self)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.addWidget(scroll)
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(9, 0, 9, 0)  # line up with the page title
         self.intro = _wrapped("")
         layout.addWidget(self.intro)
         self.method_label = _wrapped("", gray=True)
@@ -352,11 +370,12 @@ class _PreviewPage(QWizardPage):
         self.table = _read_only_table(_PREVIEW_COLUMNS)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.itemSelectionChanged.connect(self._show_notes)
+        self.table.setMinimumHeight(200)  # about five rows, however small the window
         layout.addWidget(self.table, 2)
         layout.addWidget(QLabel("NOTES for the selected row: how it was measured and transformed"))
         self.notes = QPlainTextEdit()
         self.notes.setReadOnly(True)
-        self.notes.setMaximumHeight(70)
+        self.notes.setFixedHeight(90)
         layout.addWidget(self.notes)
         checks = QHBoxLayout()
         layout.addLayout(checks)
@@ -379,7 +398,7 @@ class _PreviewPage(QWizardPage):
                 "the reported uncertainty."
             ),
         )
-        self.coeff_box.setMaximumWidth(560)
+        self.coeff_box.setMaximumWidth(_CAPTION_WIDTH + 20)
         checks.addStretch()
         self.submission: Submission | None = None
 
@@ -507,6 +526,12 @@ class SubmissionWizard(QWizard):
         self.session = session
         self.setWindowTitle("Create Submission Report")
         self.setMinimumSize(760, 560)
+        width, height = 980, 900
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            width, height = min(width, available.width() - 80), min(height, available.height() - 80)
+        self.resize(width, height)
         self.setOption(QWizard.NoBackButtonOnLastPage, False)
         self.setButtonText(QWizard.FinishButton, "Save…")
         # The macOS style puts stock Qt artwork down the left; the classic style has none.
