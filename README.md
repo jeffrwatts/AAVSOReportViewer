@@ -1,11 +1,11 @@
 # Photometry Workbench
 
-A desktop app for photometry processed in the AAVSO's VPhot. Open a
-session's AAVSO report, inspect your results, apply your transform (single comparison
-star or ensemble), check what the transform changed, and save a report ready to
-upload to the AAVSO with WebObs. The reported uncertainty is chosen following the
-AAVSO CHOICE course *Uncertainty about Uncertainty*
-([how](docs/user-guide.md#how-the-uncertainty-is-chosen)).
+A desktop app for photometry processed in the AAVSO's VPhot. Open a session's AAVSO
+report, inspect your results, transform them (single comparison star or ensemble),
+compare the check star and comps against the catalog before and after the transform,
+and submit: save a report ready to upload to the AAVSO with WebObs. The reported
+uncertainty is chosen following the AAVSO CHOICE course *Uncertainty about
+Uncertainty* ([how](docs/user-guide.md#how-the-uncertainty-is-chosen)).
 
 <br>
 
@@ -28,8 +28,7 @@ What it does:
   transform.
 - **Submit**: choose how to report the uncertainty with a few questions (combine
   frames or not, does the target vary), preview the rows, and save an AAVSO Extended
-  Format file. For an ensemble light curve the uncertainty comes from the spread of
-  the target's estimates across the comparison stars.
+  Format report ready to upload to the AAVSO with WebObs.
 
 ## Install
 
