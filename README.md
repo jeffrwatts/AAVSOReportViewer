@@ -16,7 +16,7 @@ AAVSO CHOICE course *Uncertainty about Uncertainty*
 What it does:
 
 - **Inspect** a session: target, check star and every comparison star against the
-  catalog, with the problems flagged and the reason on hover. Light curves for the
+  catalog, with potential issues flagged and the reason on hover. Light curves for the
   target, check and comps, plus VPhot's SNR, FWHM, sky and peak counts, charted
   much as VPhot shows them.
 - **Transform** with your Transform Generator (TG) coefficients. A single
