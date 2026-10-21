@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
@@ -214,7 +215,11 @@ class _LightCurvePage(QWizardPage):
         layout = QVBoxLayout(self)
         self.text = _wrapped("")
         layout.addWidget(self.text)
-        self.spread_table = _read_only_table(["Filter", "Comps", "Median spread (Std)", "Median MERR (SNR)"])
+        self.spread_caption = _wrapped(
+            "Each frame's uncertainty combines two parts: how much the comparison stars disagree "
+            "(their spread) and the target's own SNR error. Medians over the frames:", gray=True)
+        layout.addWidget(self.spread_caption)
+        self.spread_table = _read_only_table(["Filter", "Comps", "Spread across comps", "SNR error", "Reported (combined)"])
         layout.addWidget(self.spread_table)
         self.problem = _wrapped("")
         self.problem.setStyleSheet(f"color: {coloring.FLAG.name()};")
@@ -226,6 +231,7 @@ class _LightCurvePage(QWizardPage):
         self.text.setText(method.description)
         ensemble = method == ErrorMethod.COMP_SPREAD
         self.spread_table.setVisible(ensemble)
+        self.spread_caption.setVisible(ensemble)
         self.problem.clear()
         if ensemble:
             self._wizard.spread = None
@@ -253,6 +259,8 @@ class _LightCurvePage(QWizardPage):
             _set_cell(self.spread_table, r, 1, "/".join(map(str, comps)) or "0")
             _set_cell(self.spread_table, r, 2, f"{spread.loc[rows, 'std'].median():.3f}")
             _set_cell(self.spread_table, r, 3, f"{df.loc[rows, 'MERR'].median():.3f}")
+            combined = np.hypot(spread.loc[rows, "std"], df.loc[rows, "MERR"])
+            _set_cell(self.spread_table, r, 4, f"{combined.median():.3f}")
         _fit_height(self.spread_table)
 
     def isComplete(self):
