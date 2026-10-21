@@ -311,6 +311,13 @@ class Session:
         so the offsets of an ensemble's comps balance out, and one that stands apart
         disagrees with the others (a catalog error, or a color the transform fixes).
         Transformed like `after` when `transformed`; raises ValueError like comp_spread."""
+        offsets = self._frame_comp_offsets(transformed)
+        return offsets.groupby("FILT").median().T.reindex(columns=self.filters)
+
+    def _frame_comp_offsets(self, transformed: bool) -> pd.DataFrame:
+        """comp_offsets before taking the median: one row per report frame (indexed like
+        report.df, with its FILT), one column per comp. Untransformed, a comp's value
+        equals its General Report column minus its catalog magnitude."""
         report, *_ = inputs = self._per_comp_inputs(transformed)
         estimates = per_comp_estimates(*inputs)
         # Comp i measured against the others reads mean(others' estimates) - (its own),
@@ -319,7 +326,7 @@ class Session:
         n = estimates.notna().sum(axis=1)
         offsets = -estimates.sub(estimates.mean(axis=1), axis=0).mul(n / (n - 1), axis=0)
         offsets["FILT"] = report.df["FILT"]
-        return offsets.groupby("FILT").median().T.reindex(columns=self.filters)
+        return offsets
 
     def coefficient_sensitivity(self) -> dict[str, CoefficientSensitivity]:
         """Per filter, how much the after report's target magnitudes depend on the
@@ -569,6 +576,14 @@ class Session:
             # names.
             chart_phot = self.chart_photometry() or {}
             gdf = self.general.df
+            # Transformed comp magnitudes, measured against the other comps like the
+            # General Report's columns: catalog + the transformed per-frame offset.
+            after_offsets = None
+            if self.after_coeffs is not None:
+                try:
+                    after_offsets = self._frame_comp_offsets(transformed=True)
+                except ValueError:
+                    after_offsets = None
             for star in comp_names:
                 if star not in gdf.columns or gdf[star].notna().sum() == 0:
                     continue
@@ -576,6 +591,10 @@ class Session:
                 for filt in self.filters:
                     g = gdf.loc[gdf["Filter"] == filt, star]
                     chart_mag = star_mags.get(filt)
+                    average_after = std_after = None
+                    if after_offsets is not None and chart_mag and star in after_offsets:
+                        a = chart_mag.mag + after_offsets.loc[after_offsets["FILT"] == filt, star]
+                        average_after, std_after = _nan_to_none(a.mean()), _nan_to_none(a.std())
                     rows.append(
                         SummaryRow(
                             SECTION_COMPARISON,
@@ -589,6 +608,8 @@ class Session:
                             False,
                             catalog_mag=chart_mag.mag if chart_mag else None,
                             kreferr=chart_mag.error if chart_mag else None,
+                            average_after=average_after,
+                            std_after=std_after,
                         )
                     )
         else:

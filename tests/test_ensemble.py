@@ -227,3 +227,23 @@ def test_cross_check_flags_comp_dropout(session):
     general.loc[general.index[general["Filter"] == "V"][0], "135"] = np.nan
     session.apply_transform(_coeffs())
     assert "fewer than all 2" in session.ensemble_cross_check()
+
+
+def test_transformed_comp_rows_and_colors(session):
+    """After an in-app transform, ensemble comps get transformed averages and Std, so
+    the color-index table's after column fills in for them too."""
+    from photometry_workbench.models.session import SECTION_COMPARISON
+
+    before = {(r.star_label, r.filt): r for r in session.build_summary_rows() if r.section == SECTION_COMPARISON}
+    assert all(r.average_after is None for r in before.values())
+    session.apply_transform(_coeffs())
+    rows = [r for r in session.build_summary_rows() if r.section == SECTION_COMPARISON]
+    assert rows and all(r.average_after is not None and r.std_after is not None for r in rows)
+    # Untransformed, catalog + per-frame offset is exactly the General Report column.
+    offsets = session._frame_comp_offsets(transformed=False)
+    general, catalog = session.general.df, session.chart_photometry()
+    for comp in COMPS:
+        v = offsets.loc[offsets["FILT"] == "V", comp] + catalog[comp]["V"].mag
+        assert abs(v.mean() - general.loc[general["Filter"] == "V", comp].mean()) < 1e-6
+    comp_colors = [c for c in session.build_color_rows() if c.section == SECTION_COMPARISON]
+    assert comp_colors and all(c.measured_after is not None for c in comp_colors)
