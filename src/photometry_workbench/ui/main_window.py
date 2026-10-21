@@ -227,7 +227,7 @@ class MainWindow(QMainWindow):
         table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         return table
 
-    # -- menu -----------------------------------------------------------------
+    # -- actions --------------------------------------------------------------
 
     def _open_report(self) -> None:
         """Load a session (AAVSO Report + optional General Report), replacing any open one."""

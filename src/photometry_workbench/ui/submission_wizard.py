@@ -117,7 +117,7 @@ class _SourcePage(QWizardPage):
         else:
             reason = untransformable_reason(session.aavso)
             hint = (
-                "Close this and use Transform → Apply Transform… first if you want to submit transformed magnitudes."
+                "Close this and use Apply Transform… in step 2 first if you want to submit transformed magnitudes."
                 if reason is None
                 else f"It can't be transformed here: {reason}"
             )
