@@ -18,7 +18,7 @@ What it does:
 - **Inspect** a session: target, check star and every comparison star against the
   catalog, with potential issues flagged and the reason on hover. Light curves for the
   target, check and comps, plus VPhot's SNR, FWHM, sky and peak counts, charted
-  much as VPhot shows them.
+  much as VPhot shows them today.
 - **Transform** with your Transform Generator (TG) coefficients. A single
   comparison star is transformed the same way TransformApplier does it. For an
   **ensemble**, the target is transformed against the ensemble's average comparison
