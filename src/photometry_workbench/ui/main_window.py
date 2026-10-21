@@ -115,6 +115,10 @@ class _FitTable(QTableWidget):
         self.fit_columns()
 
 
+def _outside(delta: float | None, catalog_err: float | None) -> bool:
+    return delta is not None and bool(catalog_err) and abs(delta) > catalog_err
+
+
 def _mark(item: QTableWidgetItem, color, tip: str | None) -> None:
     """Color a cell's text and give the reason as its tooltip (coloring.*_tip)."""
     if color is not None:
@@ -365,8 +369,12 @@ class MainWindow(QMainWindow):
             for row in by_section[section]:
                 self.table.setItem(r, 0, self._star_item(row.star_label, row.catalog_mag))
                 self.table.setItem(r, 1, self._center_item(row.filt))
-                self.table.setItem(r, 2, self._average_item(row.average, row.delta, row.kreferr, row.needs_general_report))
-                self.table.setItem(r, 3, self._average_item(row.average_after, row.delta_after, row.kreferr, False))
+                average = self._average_item(row.average, row.delta, row.kreferr, row.needs_general_report)
+                average_after = self._average_item(row.average_after, row.delta_after, row.kreferr, False)
+                if section == SECTION_CHECK:
+                    self._add_check_hints(average, average_after, row)
+                self.table.setItem(r, 2, average)
+                self.table.setItem(r, 3, average_after)
                 self.table.setItem(r, 4, self._range_item(row) if is_target else self._dash_item())
                 self.table.setItem(r, 5, self._range_after_item(row) if is_target else self._dash_item())
                 # Std is only a meaningful measurement-precision signal for non-
@@ -479,6 +487,16 @@ class MainWindow(QMainWindow):
             _mark(item, coloring.ratio_color(delta, kreferr), coloring.ratio_tip(delta, kreferr))
         item.setTextAlignment(Qt.AlignCenter)
         return item
+
+    def _add_check_hints(self, average: QTableWidgetItem, average_after: QTableWidgetItem, row) -> None:
+        """A check star off by more than its catalog error gets a next step in its
+        tooltip: transform if that hasn't been done, else where else to look."""
+        if not _outside(row.delta, row.kreferr):
+            return
+        if not (self.session.is_transformed or self.session.has_after_report):
+            average.setToolTip(average.toolTip() + "\n" + coloring.CHECK_TRY_TRANSFORM)
+        elif self.session.has_after_report and _outside(row.delta_after, row.kreferr):
+            average_after.setToolTip(average_after.toolTip() + "\n" + coloring.CHECK_STILL_OUTSIDE)
 
     @classmethod
     def _std_item(cls, std: float | None, clickable: bool, is_target: bool) -> QTableWidgetItem:

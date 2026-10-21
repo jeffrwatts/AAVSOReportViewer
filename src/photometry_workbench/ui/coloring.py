@@ -39,6 +39,17 @@ def ratio_tip(value: float | None, reference: float | None) -> str | None:
     return f"Off catalog by {value:+.3f}, {times} the catalog error (±{reference:.3f})."
 
 
+# Next steps for a check star off by more than its catalog error (appended to ratio_tip).
+CHECK_TRY_TRANSFORM = (
+    "Applying the transform (Transform → Apply Transform) often brings this within the "
+    "catalog error, especially in B."
+)
+CHECK_STILL_OUTSIDE = (
+    "Still outside after the transform: check the coefficients, the chart's catalog values, "
+    "or the comparison star."
+)
+
+
 # Precision guide for a check or comparison star's scatter over the night. Real
 # sessions typically land at 0.01-0.03 mag (well above the photon-noise floor, since
 # real scatter is dominated by other noise), and that's submittable, so it isn't
