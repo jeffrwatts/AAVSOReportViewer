@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import (
@@ -40,6 +42,7 @@ from photometry_workbench.ui.chart_thumbnail import ChartThumbnail
 from photometry_workbench.ui.ensemble_dialog import EnsembleCompsDialog
 from photometry_workbench.ui.share_plot_dialog import SharePlotDialog
 from photometry_workbench.ui.startup_dialog import StartupDialog
+from photometry_workbench.ui.step_strip import CURRENT, DONE, UPCOMING, StepState, StepStrip
 from photometry_workbench.ui.submission_wizard import SubmissionWizard
 from photometry_workbench.ui.transform_dialog import TransformDialog
 
@@ -131,6 +134,7 @@ class MainWindow(QMainWindow):
     def __init__(self, session: Session):
         super().__init__()
         self.session = session
+        self._saved_path: Path | None = None
 
         self.setWindowTitle(APP_NAME)
 
@@ -159,8 +163,17 @@ class MainWindow(QMainWindow):
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setWidget(central)
-        self.setCentralWidget(scroll_area)
         self._scroll_area = scroll_area
+
+        # The step strip stays put above the scrolling tables and charts.
+        self.step_strip = StepStrip()
+        outer = QWidget()
+        outer_layout = QVBoxLayout(outer)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+        outer_layout.addWidget(self.step_strip)
+        outer_layout.addWidget(scroll_area, 1)
+        self.setCentralWidget(outer)
 
         self._wheel_forwarder = _WheelForwarder(scroll_area, self)
         for table in (self.table, self.color_table):
@@ -244,6 +257,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Failed to load report set", str(exc))
             return
         self.session = Session(report, general)
+        self._saved_path = None
         self._refresh_all()
 
     def _open_aavso_report(self) -> None:
@@ -258,6 +272,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Failed to load report", str(exc))
             return
         self.session = Session(report)
+        self._saved_path = None
         self._refresh_all()
 
     def _prompt_for_general_report(self) -> None:
@@ -324,7 +339,13 @@ class MainWindow(QMainWindow):
     def _create_submission(self) -> None:
         wizard = SubmissionWizard(self.session, self)
         if wizard.exec() == QDialog.Accepted and wizard.saved_path is not None:
-            QMessageBox.information(self, "Submission report saved", f"Saved to\n{wizard.saved_path}")
+            self._saved_path = wizard.saved_path
+            self._refresh_steps()
+            QMessageBox.information(
+                self,
+                "Submission report saved",
+                f"Saved to\n{wizard.saved_path}\n\nUpload it to the AAVSO with WebObs (File upload).",
+            )
 
     def _open_share_plot(self) -> None:
         SharePlotDialog(self.session, self).exec()
@@ -718,7 +739,75 @@ class MainWindow(QMainWindow):
 
     # -- combined refresh -----------------------------------------------------------------
 
+    def _refresh_steps(self) -> None:
+        self.step_strip.show_states(self._step_states())
+
+    def _step_states(self) -> list[StepState]:
+        s = self.session
+        n_frames = int((s.aavso.df["FILT"] == s.filters[0]).sum()) if s.filters else 0
+        comps = f"ensemble of {len(s.comp_star_names())} comps" if s.is_ensemble else "single comp"
+        general = "General Report loaded" if s.has_general_report else "no General Report"
+        inspect_actions = []
+        if not s.has_general_report:
+            inspect_actions.append(("Add General Report…", self._prompt_for_general_report))
+        if s.is_ensemble:
+            inspect_actions.append(("Ensemble Comps…", self._open_ensemble_comps))
+        inspect = StepState(
+            f"{s.star_name}, {n_frames} frames × {'/'.join(s.filters)}<br>{comps}, {general}", DONE, inspect_actions
+        )
+
+        transformed = s.has_after_report
+        if s.is_transformed:
+            transform = StepState("This report is already transformed (TRANS=YES).", DONE)
+        elif transformed:
+            source = s.after_coeffs.source if s.after_coeffs else (s.after_source or "")
+            transform = StepState(
+                f"Applied with {source}", DONE,
+                [("Change…", self._apply_transform), ("Clear", self._clear_transform)],
+            )
+        else:
+            transform = StepState(
+                "Not applied yet. Uses your Transform Generator coefficients (.ini).", CURRENT,
+                [("Apply Transform…", self._apply_transform)],
+            )
+
+        if transformed:
+            check = [r for r in s.build_summary_rows() if r.section == SECTION_CHECK]
+            moves = " · ".join(
+                f"{r.filt} {r.delta:+.3f} → {r.delta_after:+.3f}"
+                for r in check if r.delta is not None and r.delta_after is not None
+            )
+            name = check[0].star_label if check else "check star"
+            compare = StepState(
+                f"Check {name} vs catalog:<br>{moves}", DONE, [("Before/after charts", self._show_before_after)]
+            )
+        elif s.is_transformed:
+            compare = StepState("No before/after: the report was transformed outside the app.", UPCOMING, enabled=False)
+        else:
+            compare = StepState("After transforming: how far the check star and comps moved.", UPCOMING, enabled=False)
+
+        if self._saved_path is not None:
+            submit = StepState(
+                f"Saved {self._saved_path.name}.<br>Upload it with WebObs.", DONE,
+                [("Create Again…", self._create_submission)],
+            )
+        else:
+            ready = transformed or s.is_transformed
+            submit = StepState(
+                "Build the report to submit, with the right uncertainty." if ready
+                else "You can submit untransformed, but transforming first is better.",
+                CURRENT if ready else UPCOMING,
+                [("Create Submission Report…", self._create_submission)],
+            )
+        return [inspect, transform, compare, submit]
+
+    def _show_before_after(self) -> None:
+        thumb = self.thumbnails.get("check_before_after")
+        if thumb is not None:
+            self._scroll_area.ensureWidgetVisible(thumb, 0, 40)
+
     def _refresh_all(self) -> None:
+        self._refresh_steps()
         self._refresh_header()
         self._refresh_table()
         self._refresh_charts()
