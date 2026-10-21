@@ -174,14 +174,14 @@ class _CombinePage(QWizardPage):
         combine = _ChoiceCard(
             "One observation per filter",
             combine_diagram(),
-            "Frames taken close together, averaged into a single point. Their scatter gives the "
-            "uncertainty. Preferred when the science allows it: a supernova, a slow variable.",
+            "Frames taken close together, averaged into a single point; their scatter gives the "
+            "uncertainty. For a supernova or a slow variable.",
         )
         light_curve = _ChoiceCard(
             "A light curve",
             light_curve_diagram(),
             "Every frame reported as its own point, to follow the star's changes through the "
-            "session: a short-period pulsator, an eclipse.",
+            "session. For a short-period pulsator or an eclipse.",
         )
         self.choice = QButtonGroup(self)
         for i, card in enumerate((combine, light_curve)):
