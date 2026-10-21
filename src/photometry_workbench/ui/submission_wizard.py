@@ -223,7 +223,7 @@ class _LightCurvePage(QWizardPage):
 
     def initializePage(self):
         method = self._wizard.method()
-        self.text.setText("The target is assumed bright (well above sky, read and dark noise). " + method.description)
+        self.text.setText(method.description)
         ensemble = method == ErrorMethod.COMP_SPREAD
         self.spread_table.setVisible(ensemble)
         self.problem.clear()
