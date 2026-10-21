@@ -26,6 +26,8 @@ class FilterCheckboxRow(QWidget):
             box = QCheckBox(filt)
             box.setChecked(True)
             box.stateChanged.connect(on_change)
+            # macOS's size hint for a one-letter checkbox clips letters wider than "B" (R).
+            box.setMinimumWidth(box.sizeHint().width() + 8)
             layout.addWidget(box)
             self._boxes[filt] = box
         layout.addStretch(1)

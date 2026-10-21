@@ -136,14 +136,14 @@ class _CombinePage(QWizardPage):
         layout = QVBoxLayout(self)
         layout.addWidget(_wrapped(
             "Do you have more than one image that you'll report as a single data point? "
-            "Combining frames is preferred when the science allows it -- the scatter across "
+            "Combining frames is preferred when the science allows it: the scatter across "
             "the frames then gives a real uncertainty instead of one based on SNR alone."
         ))
         self.summary = _wrapped("", gray=True)
         layout.addWidget(self.summary)
         self.choice = _choice(self, layout, [
-            "Yes -- combine all frames into one observation per filter",
-            "No -- report every frame on its own (a light curve)",
+            "Yes, combine all frames into one observation per filter",
+            "No, report every frame on its own (a light curve)",
         ])
         layout.addStretch()
 
@@ -153,7 +153,7 @@ class _CombinePage(QWizardPage):
         for filt in self._wizard.source_report().filters:
             dates = df.loc[df["FILT"] == filt, "DATE"]
             parts.append(f"{filt}: {len(dates)} frames over {(dates.max() - dates.min()) * 1440:.1f} min")
-        self.summary.setText("This session -- " + "; ".join(parts))
+        self.summary.setText("This session: " + "; ".join(parts))
 
     def isComplete(self):
         return self.choice.checkedId() >= 0
@@ -174,8 +174,8 @@ class _VariesPage(QWizardPage):
             "star), the scatter of a check star of similar brightness is used instead."
         ))
         self.choice = _choice(self, layout, [
-            "No -- not expected to change during the observation (e.g. a supernova, a slow variable)",
-            "Yes -- it may change during the observation",
+            "No, not expected to change during the observation (e.g. a supernova, a slow variable)",
+            "Yes, it may change during the observation",
         ])
         layout.addWidget(_wrapped(
             "A check: if the target's Std is well above the check star's (allowing for the target "
@@ -198,7 +198,7 @@ class _VariesPage(QWizardPage):
             item = _set_cell(self.table, r, 4, f"{separation:+.2f} mag")
             if abs(separation) > CHECK_MAG_LIMIT:
                 item.setForeground(coloring.FLAG)
-                item.setToolTip(f"More than {CHECK_MAG_LIMIT:g} mag apart -- a poor stand-in for the target's scatter.")
+                item.setToolTip(f"More than {CHECK_MAG_LIMIT:g} mag apart, a poor stand-in for the target's scatter.")
 
     def isComplete(self):
         return self.choice.checkedId() >= 0
@@ -392,7 +392,7 @@ class _PreviewPage(QWizardPage):
                 f"Median over the {row.filt} frames of each frame's uncertainty: {source}."
             )
             _set_cell(self.consistency_table, r, 2, f"{row.across:.3f}").setToolTip(
-                "Std of the target's magnitude across the frames -- the uncertainty being submitted."
+                "Std of the target's magnitude across the frames: the uncertainty being submitted."
             )
             item = _set_cell(self.consistency_table, r, 3, f"{row.ratio:.1f}×")
             color = coloring.consistency_color(row.ratio)
@@ -422,6 +422,8 @@ class SubmissionWizard(QWizard):
         self.setMinimumSize(760, 560)
         self.setOption(QWizard.NoBackButtonOnLastPage, False)
         self.setButtonText(QWizard.FinishButton, "Save…")
+        # The macOS style puts stock Qt artwork down the left; the classic style has none.
+        self.setWizardStyle(QWizard.ClassicStyle)
         self.spread = None
         """Per-frame comp spread (Session.comp_spread) for an ensemble light curve."""
         self.source_page = _SourcePage(session)

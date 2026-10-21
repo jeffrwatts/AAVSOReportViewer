@@ -105,7 +105,7 @@ def _merge_notes(notes: list[dict[str, str]]) -> dict[str, str]:
 def _unique(rows: pd.DataFrame, column: str, filt: str) -> str:
     values = rows[column].astype(str).unique()
     if len(values) != 1:
-        raise SubmissionError(f"{filt} frames don't share one {column} ({', '.join(values)}) -- can't combine them.")
+        raise SubmissionError(f"{filt} frames don't share one {column} ({', '.join(values)}), so they can't be combined.")
     return values[0]
 
 
@@ -121,7 +121,7 @@ def _combine(report: AavsoReport, method: ErrorMethod) -> tuple[pd.DataFrame, li
         rows = df.loc[df["FILT"] == filt]
         n = len(rows)
         if n < 2:
-            raise SubmissionError(f"Only {n} {filt} frame -- a standard deviation needs at least 2.")
+            raise SubmissionError(f"Only {n} {filt} frame; a standard deviation needs at least 2.")
         trans = _unique(rows, "TRANS", filt)
         mag = float(rows["MAG"].mean())
         if method == ErrorMethod.STD_TARGET:
@@ -133,7 +133,7 @@ def _combine(report: AavsoReport, method: ErrorMethod) -> tuple[pd.DataFrame, li
             separation = abs(mag - rows["KEFF"].mean())
             if separation > CHECK_MAG_LIMIT:
                 warnings.append(
-                    f"{filt}: the check star is {separation:.2f} mag from the target -- more than "
+                    f"{filt}: the check star is {separation:.2f} mag from the target, more than "
                     f"{CHECK_MAG_LIMIT:g} mag, so its scatter may not represent the target's."
                 )
 
@@ -178,7 +178,7 @@ def _per_frame(
         short = int((spread["n"].fillna(0) < 2).sum())
         if short:
             raise SubmissionError(
-                f"{short} frame(s) have fewer than 2 comparison stars measured -- no spread to report."
+                f"{short} frame(s) have fewer than 2 comparison stars measured, so there's no spread to report."
             )
         out["MERR"] = np.hypot(spread["std"], out["MERR"]).round(3)
         for j in out.index:

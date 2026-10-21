@@ -36,13 +36,14 @@ class SharePlotDialog(QDialog):
         super().__init__(parent)
         self.session = session
         self.setWindowTitle(f"{session.star_name} — Share Plot")
-        self.resize(760, 520)
+        self.resize(900, 640)
 
         layout = QVBoxLayout(self)
 
         controls = QHBoxLayout()
         self.filter_row = FilterCheckboxRow(session.filters, self._refresh)
         controls.addWidget(self.filter_row)
+        controls.addSpacing(16)
 
         self.transformed_check = QCheckBox("Transformed")
         self.transformed_check.setEnabled(session.has_after_report)

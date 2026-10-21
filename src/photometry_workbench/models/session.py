@@ -250,7 +250,7 @@ class Session:
     def _require_general_report(self) -> None:
         if self.general is None:
             raise ValueError(
-                "This needs VPhot's General Report for the session (step 1, Add General Report…) -- "
+                "This needs VPhot's General Report for the session (step 1, Add General Report…): "
                 "only it has each comparison star's magnitude per frame."
             )
 
@@ -261,7 +261,7 @@ class Session:
         if not catalog:
             raise ValueError(
                 "Couldn't get the comparison stars' catalog magnitudes from AAVSO's chart service "
-                f"(chart {self.chart_id or 'unknown'}) -- check the network connection and try again."
+                f"(chart {self.chart_id or 'unknown'}). Check the network connection and try again."
             )
         return catalog
 
