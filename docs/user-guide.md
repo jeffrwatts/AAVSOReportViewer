@@ -176,13 +176,13 @@ comparison stars with the SNR error:
 
 <br>
 
-The **Preview** shows the rows that will be saved, with each row's NOTES (including
+**Check the report before saving** shows the rows that will be saved, with each row's NOTES (including
 the method, the comparison stars and their spread) and how much the transform
 coefficients' own errors move the result (shown for reference, not added in).
 
 <br>
 
-![Preview](images/09-wizard-preview.png)
+![Check the report before saving](images/09-wizard-preview.png)
 
 <br>
 

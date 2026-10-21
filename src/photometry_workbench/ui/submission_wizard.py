@@ -115,11 +115,15 @@ def _fit_height(table: QTableWidget) -> None:
     table.setFixedHeight(height + sum(table.rowHeight(r) for r in range(table.rowCount())))
 
 
-def _titled_table(parent_layout: QHBoxLayout, title: str, columns: list[str]) -> tuple[QWidget, QTableWidget]:
+def _titled_table(
+    parent_layout: QHBoxLayout, title: str, columns: list[str], caption: str = ""
+) -> tuple[QWidget, QTableWidget]:
     box = QWidget()
     layout = QVBoxLayout(box)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.addWidget(QLabel(title))
+    if caption:
+        layout.addWidget(_wrapped(caption, gray=True))
     table = _read_only_table(columns)
     layout.addWidget(table)
     layout.addStretch()
@@ -335,10 +339,12 @@ class _PreviewPage(QWizardPage):
     def __init__(self, wizard: "SubmissionWizard"):
         super().__init__()
         self._wizard = wizard
-        self.setTitle("Preview")
+        self.setTitle("Check the report before saving")
         self.setFinalPage(True)
         layout = QVBoxLayout(self)
-        self.method_label = _wrapped("")
+        self.intro = _wrapped("")
+        layout.addWidget(self.intro)
+        self.method_label = _wrapped("", gray=True)
         layout.addWidget(self.method_label)
         self.warning_label = _wrapped("")
         self.warning_label.setStyleSheet(f"color: {coloring.BORDERLINE.name()};")
@@ -347,7 +353,7 @@ class _PreviewPage(QWizardPage):
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.itemSelectionChanged.connect(self._show_notes)
         layout.addWidget(self.table, 2)
-        layout.addWidget(QLabel("NOTES of the selected row"))
+        layout.addWidget(QLabel("NOTES for the selected row: how it was measured and transformed"))
         self.notes = QPlainTextEdit()
         self.notes.setReadOnly(True)
         self.notes.setMaximumHeight(70)
@@ -363,8 +369,17 @@ class _PreviewPage(QWizardPage):
         # own errors, judged against the MERR being submitted. It's a systematic
         # uncertainty, so it's shown for reference and not added to MERR.
         self.coeff_box, self.coeff_table = _titled_table(
-            checks, "Transform coefficient uncertainty (not included in the reported uncertainty)", ["Filter", "Uncertainty", "Coeff ±"]
+            checks,
+            "Transform coefficient uncertainty (not included in the reported uncertainty)",
+            ["Filter", "Reported uncertainty", "Shift from coefficients"],
+            caption=(
+                "How far the magnitudes would move if the transform coefficients were off by their "
+                "own errors. That shift is the same for every frame, a systematic offset rather than "
+                "random scatter, so it isn't added to each frame's uncertainty. Green: smaller than "
+                "the reported uncertainty."
+            ),
         )
+        self.coeff_box.setMaximumWidth(560)
         checks.addStretch()
         self.submission: Submission | None = None
 
@@ -384,11 +399,17 @@ class _PreviewPage(QWizardPage):
             format_report(self.submission.report)  # surface any field-validation error now, not at save
         except (SubmissionError, ValueError) as exc:
             self.submission = None
-            self.method_label.setText(f"Can't build the report: {exc}")
+            self.intro.setText(f"Can't build the report: {exc}")
+            self.method_label.clear()
             self.warning_label.clear()
             self.completeChanged.emit()
             return
-        self.method_label.setText(method.description + " The uncertainty goes in the report's MERR column.")
+        rows = "one per filter" if self._wizard.combine_page.combine() else "one per frame and filter"
+        self.intro.setText(
+            f"These are the rows that will be saved ({rows}), in the AAVSO Extended Format that WebObs "
+            "accepts. MAG is the magnitude and MERR its uncertainty. Click a row to see its NOTES."
+        )
+        self.method_label.setText(method.description)
         self.warning_label.setText("\n".join(self.submission.warnings))
         df = self.submission.report.df
         self.table.setRowCount(len(df))
@@ -416,7 +437,9 @@ class _PreviewPage(QWizardPage):
         # One MERR per filter for a combined point; a light curve's vary by frame.
         merr = self.submission.report.df.groupby("FILT")["MERR"].median()
         light_curve = not self._wizard.combine_page.combine()
-        self.coeff_table.setHorizontalHeaderLabels(["Filter", "Uncertainty (median)" if light_curve else "Uncertainty", "Coeff ±"])
+        self.coeff_table.setHorizontalHeaderLabels(
+            ["Filter", "Reported uncertainty (median)" if light_curve else "Reported uncertainty", "Shift from coefficients"]
+        )
         filters = [f for f in self.submission.report.filters if f in sensitivity]
         self.coeff_table.setRowCount(len(filters))
         for r, filt in enumerate(filters):
@@ -445,7 +468,7 @@ class _PreviewPage(QWizardPage):
             except ValueError:
                 spread = None  # without the General Report, a frame's MERR is its SNR error alone
         if report.is_ensemble and spread is not None:
-            source = "the spread across the comparison stars combined with the SNR uncertainty (Technique #3)"
+            source = "the spread across the comparison stars combined with the SNR uncertainty"
         else:
             source = "its SNR uncertainty (as propagated by the transform when transformed)"
         rows = frame_consistency(report, spread)
