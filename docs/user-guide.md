@@ -166,10 +166,9 @@ curve.
 
 When combining, the next question is **Will the target change during these
 frames?** If it holds steady, its own scatter is the uncertainty; if it may change, the
-check star's scatter is used instead. Decide from what you know about the star: does it
-change noticeably over the minutes the frames span (shown on the page)? The target's
-scatter alone can't tell you; it's usually larger than the check star's even when the
-target is steady, since it's fainter and the transform adds each frame's color noise.
+check star's scatter is used instead. Decide from what you know about the star: do you
+expect it to change over the minutes the frames span (shown on the page)? The target's
+and check star's scatter are shown for reference.
 
 For a light curve with an ensemble, the uncertainty combines the spread across the
 comparison stars with the SNR error:
