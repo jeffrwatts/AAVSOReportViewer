@@ -252,9 +252,13 @@ class _VariesPage(QWizardPage):
             cards.addWidget(card, 1)
         self.choice.idToggled.connect(lambda *_: self.completeChanged.emit())
         layout.addLayout(cards)
+        self.decide = _wrapped("")
+        layout.addWidget(self.decide)
         layout.addWidget(_wrapped(
-            "To help you decide: if the target scatters much more than the check star, it's "
-            "probably changing. A fainter target scatters a little more on its own.", gray=True,
+            "For reference. The target often scatters more than the check star even when it's "
+            "steady: it's usually fainter, and after the transform each frame's own color adds "
+            "noise. So a larger scatter alone doesn't mean it's changing. To stand in for the "
+            f"target, the check star should be within {CHECK_MAG_LIMIT:g} mag of it.", gray=True,
         ))
         self.table = _read_only_table(
             ["Filter", "Frames", "Target scatter (Std)", "Check star scatter (Std)", "Target vs check star"]
@@ -265,6 +269,12 @@ class _VariesPage(QWizardPage):
     def initializePage(self):
         report = self._wizard.source_report()
         df = report.df
+        minutes = (df["DATE"].max() - df["DATE"].min()) * 1440
+        self.decide.setText(
+            "Decide from what you know about the star, not from the numbers below: does it change "
+            f"noticeably over the {minutes:.1f} minutes these frames span? A supernova or a slow "
+            "variable doesn't; a fast pulsator or a flaring star can."
+        )
         self.table.setRowCount(len(report.filters))
         for r, filt in enumerate(report.filters):
             rows = df.loc[df["FILT"] == filt]
