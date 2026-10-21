@@ -20,11 +20,12 @@ What it does:
   target, check and comps, plus VPhot's SNR, FWHM, sky and peak counts, charted
   much as VPhot shows them.
 - **Transform** with your Transform Generator (TG) coefficients. A single
-  comparison star is transformed the same way TransformApplier does it, with matching
-  results. An **ensemble** is transformed as its average comparison star, the average
-  VPhot reports for the ensemble, and each comparison star's estimate of the target is
-  also transformed on its own to give the uncertainty.
-- **Compare** the check star and comps against the catalog before and after.
+  comparison star is transformed the same way TransformApplier does it. For an
+  **ensemble**, the target is transformed against the ensemble's average comparison
+  star, as VPhot reports it, and against each comparison star separately; how much
+  those disagree gives the uncertainty.
+- **Compare** the check star and comps against the catalog, before and after the
+  transform.
 - **Submit**: choose how to report the uncertainty with a few questions (combine
   frames or not, does the target vary), preview the rows, and save an AAVSO Extended
   Format file. For an ensemble light curve the uncertainty comes from the spread of
