@@ -16,9 +16,11 @@ What it does:
 - **Inspect** a session: target, check star and every comparison star against the
   catalog, with the problems flagged and the reason on hover. Light curves for the
   target, check and comps, plus VPhot's SNR, FWHM, sky and peak counts.
-- **Transform** with your Transform Generator (TG) coefficients,
-  for a single comparison star (the same results as TransformApplier) or an
-  **ensemble**, which TransformApplier doesn't do.
+- **Transform** with your Transform Generator (TG) coefficients. A single
+  comparison star is transformed the same way TransformApplier does it, with matching
+  results. An **ensemble** is transformed as its average comparison star, the average
+  VPhot reports for the ensemble, and each comparison star's estimate of the target is
+  also transformed on its own to give the uncertainty.
 - **Compare** the check star and comps against the catalog before and after.
 - **Submit**: choose how to report the uncertainty with a few questions (combine
   frames or not, does the target vary), preview the rows, and save an AAVSO Extended
