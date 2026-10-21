@@ -149,8 +149,9 @@ comparison star.
 
 ## Step 4: Submit
 
-**Create Submission Report…** opens a short wizard. It first asks whether to submit
-the transformed or the untransformed magnitudes, then:
+**Create Submission Report…** opens a short wizard. After a transform, it first asks
+whether to submit the transformed or the untransformed magnitudes, showing the check
+star's offset from catalog for each so you can see which comes closer. Then:
 
 <br>
 

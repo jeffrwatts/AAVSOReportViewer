@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QWizardPage,
 )
 
-from photometry_workbench.models.session import Session
+from photometry_workbench.models.session import SECTION_CHECK, Session
 from photometry_workbench.parsing.aavso_report import AavsoReport
 from photometry_workbench.parsing.aavso_writer import format_report, write_aavso_report
 from photometry_workbench.submission.builder import (
@@ -107,6 +107,24 @@ class _ChoiceCard(QFrame):
         self.setStyleSheet(f"QFrame#card {{ border: {border}; border-radius: 8px; }}")
 
 
+def _check_offsets(rows, after: bool) -> QLabel:
+    """Each filter's check star offset from catalog, colored like the main table, as a
+    card's evidence (before or after the transform)."""
+    lines = []
+    for row in rows:
+        delta = row.delta_after if after else row.delta
+        if delta is None:
+            continue
+        color = coloring.ratio_color(delta, row.kreferr)
+        style = f" style='color:{color.name()}'" if color is not None else ""
+        lines.append(f"{row.filt}&nbsp;&nbsp;<span{style}>{delta:+.3f}</span>")
+    star = rows[0].star_label if rows else "check star"
+    label = QLabel(f"Check star {star} vs catalog:<br>" + "<br>".join(lines))
+    label.setTextFormat(Qt.RichText)
+    label.setContentsMargins(4, 6, 0, 6)
+    return label
+
+
 def _card_row(cards: list["_ChoiceCard"], page: QWizardPage) -> tuple[QWidget, QButtonGroup]:
     """Cards side by side, equal in height and no taller than the tallest needs, as one
     choice (button ids in order)."""
@@ -170,26 +188,49 @@ def _set_cell(table: QTableWidget, r: int, c: int, text: str) -> QTableWidgetIte
 class _SourcePage(QWizardPage):
     def __init__(self, session: Session):
         super().__init__()
-        self.setTitle("Which magnitudes to submit")
+        self.setTitle("Which magnitudes do you want to submit?")
         layout = QVBoxLayout(self)
         self.choice = None
         if session.has_after_report:
-            layout.addWidget(_wrapped("Submit the transformed magnitudes, or the untransformed ones as VPhot reported them?"))
-            self.choice = _choice(self, layout, [
-                f"Transformed ({session.after_source or 'transformed report'})",
-                "Untransformed (as reported)",
-            ])
+            check = [r for r in session.build_summary_rows() if r.section == SECTION_CHECK]
+            source = session.after_coeffs.source if session.after_coeffs else "your coefficients"
+            transformed = _ChoiceCard(
+                "Transformed",
+                _check_offsets(check, after=True),
+                f"Corrected to the standard system with your coefficients ({source}), so they "
+                "match other observers' data. Marked TRANS=YES.",
+            )
+            untransformed = _ChoiceCard(
+                "Untransformed",
+                _check_offsets(check, after=False),
+                "As VPhot measured them, in your own camera and filters' system. Marked TRANS=NO.",
+            )
+            row, self.choice = _card_row([transformed, untransformed], self)
+            layout.addWidget(row)
             self.choice.button(0).setChecked(True)
+            layout.addWidget(_wrapped(
+                "The check star shows how close each set comes to the catalog. Green is within the "
+                "catalog error; orange or red is outside it.", gray=True,
+            ))
         elif session.is_transformed:
-            layout.addWidget(_wrapped("The loaded report is already transformed (TRANS=YES)."))
+            self.setTitle("Submitting transformed magnitudes")
+            layout.addWidget(_wrapped(
+                "The loaded report is already transformed (TRANS=YES), so these magnitudes are "
+                "submitted as they are."
+            ))
         else:
+            self.setTitle("Submitting untransformed magnitudes")
             reason = untransformable_reason(session.aavso)
             hint = (
-                "Close this and use Apply Transform… in step 2 first if you want to submit transformed magnitudes."
+                "To submit transformed magnitudes instead, close this and use Apply Transform… in "
+                "step 2 first."
                 if reason is None
                 else f"It can't be transformed here: {reason}"
             )
-            layout.addWidget(_wrapped(f"No transform is applied, so this is submitted untransformed (TRANS=NO). {hint}"))
+            layout.addWidget(_wrapped(
+                "No transform has been applied, so these are submitted untransformed (TRANS=NO), as "
+                f"VPhot measured them. {hint}"
+            ))
         layout.addStretch()
 
     def use_transformed(self) -> bool:
