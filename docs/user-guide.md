@@ -191,8 +191,7 @@ coefficients' own errors move the result (shown for reference, not added in).
 
 The wizard follows the uncertainty decision tree taught in the AAVSO CHOICE course
 *Uncertainty about Uncertainty* (Aaron Price, with Arne Henden, Matthew Templeton and
-Mike Simonsen, 2012), and extends it to ensemble light curves, which the course doesn't
-cover. In the app's terms:
+Mike Simonsen, 2012), and adds a branch for ensemble light curves. In the app's terms:
 
 ```mermaid
 flowchart TD

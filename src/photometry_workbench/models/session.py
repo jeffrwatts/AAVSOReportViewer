@@ -517,8 +517,8 @@ class Session:
             )
 
         # Comparison-star stats are only derivable from the General Report's own
-        # per-star standardized-magnitude columns -- but VPhot only actually populates
-        # those for an ENSEMBLE export; a single-comparison-star export's sole comp
+        # per-star standardized-magnitude columns, which VPhot fills in
+        # for an ENSEMBLE export; a single-comparison-star export's sole comp
         # column is a literal 'na' placeholder in every row (it's the calibration
         # anchor, not something VPhot tracks per-frame), so loading a General Report
         # never unlocks real stats there. Only break the section out into one row per
