@@ -16,3 +16,6 @@ uncertainty-v8.pdf
 *.log
 temp/
 temp2/
+
+# Jupyter autosave copies
+.ipynb_checkpoints/

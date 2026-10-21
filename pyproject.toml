@@ -23,6 +23,7 @@ photometry-workbench = "photometry_workbench.app:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+notebook = ["jupyter"]
 
 [build-system]
 requires = ["hatchling>=1.27"]
