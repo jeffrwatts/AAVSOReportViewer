@@ -163,26 +163,6 @@ def test_frame_consistency_uses_comp_spread(session):
         assert with_spread[filt].ratio < snr_only[filt].ratio
 
 
-def test_comp_membership_clean_run(session):
-    """Every comp measured in every frame of every filter: n/n everywhere."""
-    membership = session.comp_membership()
-    assert set(membership) == set(COMPS)
-    for by_filter in membership.values():
-        for m in by_filter.values():
-            assert m.measured == m.frames == 5
-            assert m.missing == []
-
-
-def test_comp_membership_reports_dropped_frame(session):
-    general = session.general.df
-    row = general.index[general["Filter"] == "B"][2]
-    general.loc[row, "135"] = np.nan
-    m = session.comp_membership()["135"]["B"]
-    assert (m.measured, m.frames) == (4, 5)
-    assert m.missing == [pytest.approx(general.at[row, "JD"])]
-    assert session.comp_membership()["130"]["B"].measured == 5
-
-
 def test_comp_offsets_match_vphot_comp_columns(session):
     """Untransformed, a comp's offset is its General Report magnitude (measured
     against the other comps, as VPhot shows it) minus its catalog magnitude. With two
@@ -229,9 +209,8 @@ def test_cross_check_flags_comp_dropout(session):
     assert "fewer than all 2" in session.ensemble_cross_check()
 
 
-def test_transformed_comp_rows_and_colors(session):
-    """After an in-app transform, ensemble comps get transformed averages and Std, so
-    the color-index table's after column fills in for them too."""
+def test_transformed_comp_rows(session):
+    """After an in-app transform, ensemble comps get transformed averages and Std."""
     from photometry_workbench.models.session import SECTION_COMPARISON
 
     before = {(r.star_label, r.filt): r for r in session.build_summary_rows() if r.section == SECTION_COMPARISON}
@@ -245,5 +224,3 @@ def test_transformed_comp_rows_and_colors(session):
     for comp in COMPS:
         v = offsets.loc[offsets["FILT"] == "V", comp] + catalog[comp]["V"].mag
         assert abs(v.mean() - general.loc[general["Filter"] == "V", comp].mean()) < 1e-6
-    comp_colors = [c for c in session.build_color_rows() if c.section == SECTION_COMPARISON]
-    assert comp_colors and all(c.measured_after is not None for c in comp_colors)

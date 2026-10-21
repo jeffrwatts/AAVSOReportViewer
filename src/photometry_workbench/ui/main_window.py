@@ -39,7 +39,6 @@ from photometry_workbench.ui.chart_detail_dialog import (
     TargetBeforeAfterDetailDialog,
 )
 from photometry_workbench.ui.chart_thumbnail import ChartThumbnail
-from photometry_workbench.ui.ensemble_dialog import EnsembleCompsDialog
 from photometry_workbench.ui.share_plot_dialog import SharePlotDialog
 from photometry_workbench.ui.startup_dialog import StartupDialog
 from photometry_workbench.ui.step_strip import CURRENT, DONE, UPCOMING, StepState, StepStrip
@@ -54,8 +53,6 @@ TABLE_COLUMNS = [
 ]
 _AFTER_ONLY_COLUMNS = ["Average (After)", "Range (After)", "Std (After)"]
 
-COLOR_TABLE_COLUMNS = ["Star", "Index", "Catalog", "Measured", "Measured (After)", "Catalog Err"]
-_COLOR_AFTER_ONLY_COLUMNS = ["Measured (After)"]
 # Noise Floor and Trend are still computed (Session.build_summary_rows) and still
 # drive Std's coloring, but they're not shown as their own
 # columns, to keep the table lean.
@@ -151,14 +148,6 @@ class MainWindow(QMainWindow):
         self.table.cellClicked.connect(self._on_table_cell_clicked)
         layout.addWidget(self.table)
 
-        # Color indices (B-V, V-R, ...) for check/comparison stars -- a separate small
-        # table rather than more columns on the per-filter one, since each index spans
-        # two filter rows. Hidden entirely when the session has fewer than two filters.
-        self.color_label = QLabel("Color Indices")
-        self.color_label.setStyleSheet("font-size: 13px; font-weight: 600; padding: 8px 4px 4px 4px;")
-        layout.addWidget(self.color_label)
-        self.color_table = self._make_table(COLOR_TABLE_COLUMNS)
-        layout.addWidget(self.color_table)
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -176,7 +165,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(outer)
 
         self._wheel_forwarder = _WheelForwarder(scroll_area, self)
-        for table in (self.table, self.color_table):
+        for table in (self.table,):
             table.viewport().installEventFilter(self._wheel_forwarder)
             table.installEventFilter(self._wheel_forwarder)
 
@@ -231,9 +220,6 @@ class MainWindow(QMainWindow):
         apply_action.triggered.connect(self._apply_transform)
         self._clear_transform_action = transform_menu.addAction("Clear Transform")
         self._clear_transform_action.triggered.connect(self._clear_transform)
-        transform_menu.addSeparator()
-        self._ensemble_comps_action = transform_menu.addAction("Ensemble Comps…")
-        self._ensemble_comps_action.triggered.connect(self._open_ensemble_comps)
         transform_menu.aboutToShow.connect(self._update_transform_menu)
 
         report_menu = self.menuBar().addMenu("&Report")
@@ -319,18 +305,6 @@ class MainWindow(QMainWindow):
 
     def _update_transform_menu(self) -> None:
         self._clear_transform_action.setEnabled(self.session.has_after_report)
-        self._ensemble_comps_action.setEnabled(self.session.is_ensemble)
-
-    def _open_ensemble_comps(self) -> None:
-        if not self.session.has_general_report:
-            QMessageBox.information(
-                self,
-                "Ensemble Comps",
-                "This needs VPhot's General Report for the session (File → Open General Report…) -- "
-                "only it has each comparison star's magnitude per frame.",
-            )
-            return
-        EnsembleCompsDialog(self.session, self).exec()
 
     def _clear_transform(self) -> None:
         self.session.clear_transform()
@@ -413,50 +387,6 @@ class MainWindow(QMainWindow):
                 r += 1
 
         self._resize_table_to_contents(self.table)
-        self._refresh_color_table(rows)
-
-    def _refresh_color_table(self, summary_rows) -> None:
-        color_rows = self.session.build_color_rows(summary_rows)
-        self.color_label.setVisible(bool(color_rows))
-        self.color_table.setVisible(bool(color_rows))
-        if not color_rows:
-            return
-
-        has_after = self.session.has_after_report
-        for col, name in enumerate(COLOR_TABLE_COLUMNS):
-            self.color_table.setColumnHidden(col, name in _COLOR_AFTER_ONLY_COLUMNS and not has_after)
-
-        sections = [s for s in (SECTION_CHECK, SECTION_COMPARISON) if any(c.section == s for c in color_rows)]
-        self.color_table.clearSpans()
-        self.color_table.setRowCount(len(sections) + len(color_rows))
-        r = 0
-        for section in sections:
-            self._set_section_header(self.color_table, r, section, len(COLOR_TABLE_COLUMNS))
-            r += 1
-            for row in (c for c in color_rows if c.section == section):
-                self.color_table.setItem(r, 0, self._center_item(row.star_label))
-                self.color_table.setItem(r, 1, self._center_item(row.index))
-                self.color_table.setItem(r, 2, self._numeric_item(row.catalog))
-                # Catalog color errors (~0.1) swamp typical deltas, so with an after
-                # report the question becomes "did the transform move it closer?":
-                # After is colored by improvement and Measured stays plain. Without
-                # one, fall back to the main table's delta-vs-catalog-error rule.
-                if has_after:
-                    measured = self._average_item(row.measured, row.delta, None, False)
-                    after = self._average_item(row.measured_after, row.delta_after, None, False)
-                    _mark(
-                        after,
-                        coloring.improvement_color(row.delta, row.delta_after, row.catalog_err),
-                        coloring.improvement_tip(row.delta, row.delta_after, row.catalog_err),
-                    )
-                else:
-                    measured = self._average_item(row.measured, row.delta, row.catalog_err, False)
-                    after = self._dash_item()
-                self.color_table.setItem(r, 3, measured)
-                self.color_table.setItem(r, 4, after)
-                self.color_table.setItem(r, 5, self._numeric_item(row.catalog_err))
-                r += 1
-        self._resize_table_to_contents(self.color_table)
 
     @staticmethod
     def _set_section_header(table: QTableWidget, r: int, section: str, n_columns: int) -> None:
@@ -750,8 +680,6 @@ class MainWindow(QMainWindow):
         inspect_actions = []
         if not s.has_general_report:
             inspect_actions.append(("Add General Report…", self._prompt_for_general_report))
-        if s.is_ensemble:
-            inspect_actions.append(("Ensemble Comps…", self._open_ensemble_comps))
         inspect = StepState(
             f"{s.star_name}, {n_frames} frames × {'/'.join(s.filters)}<br>{comps}, {general}", DONE, inspect_actions
         )

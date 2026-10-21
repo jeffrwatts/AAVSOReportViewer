@@ -117,63 +117,6 @@ class SummaryRow:
         return max(max(self.vsx_bright - min_val, 0.0), max(max_val - self.vsx_faint, 0.0))
 
 
-# Color indices are formed from adjacent bands in wavelength order, so a B/V/R
-# session gets B-V and V-R (B-R would just be their sum, adding nothing new).
-_BAND_ORDER = ["U", "B", "V", "R", "I"]
-
-
-@dataclass
-class ColorRow:
-    """One color index (e.g. B-V) for one non-variable star: measured as the
-    difference of the star's per-filter session averages, judged against the same
-    difference of its catalog magnitudes. Any error common to both filters (zero
-    point, comp-star offset) cancels here, so what's left is the color-dependent
-    error that a transform exists to remove."""
-
-    section: str
-    star_label: str
-    index: str
-    """e.g. 'B-V'."""
-    catalog: float | None
-    catalog_err: float | None
-    """Quadrature sum of the two bands' catalog errors."""
-    measured: float | None
-    measured_after: float | None = None
-
-    @property
-    def delta(self) -> float | None:
-        if self.measured is None or self.catalog is None:
-            return None
-        return self.measured - self.catalog
-
-    @property
-    def delta_after(self) -> float | None:
-        if self.measured_after is None or self.catalog is None:
-            return None
-        return self.measured_after - self.catalog
-
-
-def _color_pairs(filters: list[str]) -> list[tuple[str, str]]:
-    ordered = [b for b in _BAND_ORDER if b in filters]
-    return list(zip(ordered, ordered[1:]))
-
-
-def _difference(a: float | None, b: float | None) -> float | None:
-    return None if a is None or b is None else a - b
-
-
-def _quadrature(a: float | None, b: float | None) -> float | None:
-    return None if a is None or b is None else float(np.hypot(a, b))
-
-
-@dataclass(frozen=True)
-class CompMembership:
-    measured: int
-    """Frames in the filter with a measurement for this comparison star."""
-    frames: int
-    """All frames in the filter."""
-    missing: list[float]
-    """JDs of the frames without one."""
 
 
 class Session:
@@ -284,25 +227,6 @@ class Session:
                 f"(chart {self.chart_id or 'unknown'}) -- check the network connection and try again."
             )
         return catalog
-
-    def comp_membership(self) -> dict[str, dict[str, CompMembership]]:
-        """For an ensemble session, {comp: {filter: CompMembership}} -- in how many of
-        each filter's frames (General Report rows) each comparison star was measured.
-        A clean run is n/n everywhere: every frame's ensemble is the same stars."""
-        if not self.is_ensemble:
-            raise ValueError("Only an ensemble session has comparison-star membership.")
-        self._require_general_report()
-        general = self.general.df
-        result = {}
-        for comp in self.comp_star_names():
-            result[comp] = {}
-            for filt in self.filters:
-                rows = general.loc[general["Filter"] == filt]
-                measured = rows[comp].notna() if comp in rows.columns else pd.Series(False, index=rows.index)
-                result[comp][filt] = CompMembership(
-                    int(measured.sum()), len(rows), [float(jd) for jd in rows.loc[~measured, "JD"]]
-                )
-        return result
 
     def comp_offsets(self, transformed: bool) -> pd.DataFrame:
         """For an ensemble session, each comparison star's measured magnitude minus its
@@ -634,41 +558,6 @@ class Session:
                 )
 
         return rows
-
-    def build_color_rows(self, summary_rows: list[SummaryRow] | None = None) -> list[ColorRow]:
-        """Color indices for check and comparison stars, derived from the summary
-        table's per-filter rows (pass them in to avoid rebuilding). Targets are
-        skipped -- a variable's color changes through the session and has no catalog
-        value to judge against -- as are stars with no measured averages at all
-        (single-comparison-star sessions' comp star)."""
-        if summary_rows is None:
-            summary_rows = self.build_summary_rows()
-        by_star: dict[tuple[str, str], dict[str, SummaryRow]] = {}
-        for row in summary_rows:
-            if row.section == SECTION_TARGETS:
-                continue
-            by_star.setdefault((row.section, row.star_label), {})[row.filt] = row
-
-        color_rows: list[ColorRow] = []
-        for (section, star), filt_rows in by_star.items():
-            for blue, red in _color_pairs(list(filt_rows)):
-                b, r = filt_rows[blue], filt_rows[red]
-                measured = _difference(b.average, r.average)
-                measured_after = _difference(b.average_after, r.average_after)
-                if measured is None and measured_after is None:
-                    continue
-                color_rows.append(
-                    ColorRow(
-                        section,
-                        star,
-                        f"{blue}-{red}",
-                        catalog=_difference(b.catalog_mag, r.catalog_mag),
-                        catalog_err=_quadrature(b.kreferr, r.kreferr),
-                        measured=measured,
-                        measured_after=measured_after,
-                    )
-                )
-        return color_rows
 
     # -- Chart data --------------------------------------------------------
 

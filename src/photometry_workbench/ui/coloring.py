@@ -109,46 +109,6 @@ def range_tip(excess: float | None) -> str | None:
     )
 
 
-# Before/after improvement guide for color indices: catalog color errors (~0.1 mag)
-# swamp typical deltas, so judging against them turns everything green. Instead judge
-# whether the transform moved the measured color closer to catalog. A change within
-# 0.005 (about the best consistency a small telescope achieves) is too small to call
-# either way. Getting worse is only flagged once the result also falls outside the
-# catalog error -- worse-but-still-within-catalog-error is borderline, not a flag.
-IMPROVEMENT_TOLERANCE = 0.005
-
-
-def improvement_color(
-    delta_before: float | None, delta_after: float | None, catalog_err: float | None = None
-) -> QColor | None:
-    if delta_before is None or delta_after is None:
-        return None
-    change = abs(delta_before) - abs(delta_after)
-    if change > IMPROVEMENT_TOLERANCE:
-        return GOOD
-    if change >= -IMPROVEMENT_TOLERANCE:
-        return BORDERLINE
-    if catalog_err is not None and abs(delta_after) <= catalog_err:
-        return BORDERLINE
-    return FLAG
-
-
-def improvement_tip(
-    delta_before: float | None, delta_after: float | None, catalog_err: float | None = None
-) -> str | None:
-    color = improvement_color(delta_before, delta_after, catalog_err)
-    if color is None:
-        return None
-    moved = f"({delta_before:+.3f} before, {delta_after:+.3f} after)"
-    if color == GOOD:
-        return f"The transform moved this color closer to catalog {moved}."
-    if abs(abs(delta_before) - abs(delta_after)) <= IMPROVEMENT_TOLERANCE:
-        return f"The transform barely changed this color {moved}."
-    if color == BORDERLINE:
-        return f"The transform moved this color slightly away from catalog, but it's still within the catalog error {moved}."
-    return f"The transform moved this color away from catalog, and outside the catalog error {moved}."
-
-
 def consistency_color(ratio: float | None) -> QColor | None:
     """The Std across frames vs the single-frame uncertainty (submission.builder.
     frame_consistency): fine below 1.5x, flagged at or above it."""
