@@ -1,6 +1,9 @@
-"""Shared 3-tier accuracy/precision coloring, with thresholds from experienced AAVSO
-observers' guidance -- one coloring rule used everywhere (Average deltas, Std, comparison-star
-deltas, Trend, VSX range), not a different rule per table.
+"""Shared accuracy/precision coloring, with thresholds from experienced AAVSO observers'
+guidance -- one rule per quantity, used everywhere it's shown.
+
+Color flags something worth a look; it isn't a grade. Values in the normal range stay
+uncolored rather than red, so a submittable session doesn't read as broken. Each rule
+has a matching *_tip() giving the reason, shown as the cell's tooltip.
 """
 
 from __future__ import annotations
@@ -25,24 +28,38 @@ def ratio_color(value: float | None, reference: float | None) -> QColor | None:
     return FLAG
 
 
-# Precision guide, in absolute magnitudes rather than as a ratio to the photon-noise
-# floor (that ratio is only a rough feel, and flags nearly every real session red,
-# since real scatter is dominated by non-photon noise). The usual guide is statistical
-# error under 0.01 mag for the variable, comparison and check stars alike
-# (STD_ACCEPTABLE); about 0.005 mag is a realistic best for a small telescope
-# (STD_GOOD).
-STD_GOOD = 0.005
-STD_ACCEPTABLE = 0.01
+def ratio_tip(value: float | None, reference: float | None) -> str | None:
+    """Why ratio_color colored an offset from catalog (`reference` = the catalog error)."""
+    color = ratio_color(value, reference)
+    if color is None:
+        return None
+    if color == GOOD:
+        return f"Within the catalog error: off by {value:+.3f}, catalog error ±{reference:.3f}."
+    times = "more than" if color == BORDERLINE else "more than twice"
+    return f"Off catalog by {value:+.3f}, {times} the catalog error (±{reference:.3f})."
+
+
+# Precision guide for a check or comparison star's scatter over the night. Real
+# sessions typically land at 0.01-0.03 mag (well above the photon-noise floor, since
+# real scatter is dominated by other noise), and that's submittable, so it isn't
+# colored. Only scatter well beyond that is flagged: clouds, bad frames, or a problem
+# with the star itself.
+STD_POOR = 0.05
 
 
 def std_color(std: float | None) -> QColor | None:
-    if std is None:
+    if std is None or std <= STD_POOR:
         return None
-    if std <= STD_GOOD:
-        return GOOD
-    if std <= STD_ACCEPTABLE:
-        return BORDERLINE
-    return FLAG
+    return BORDERLINE
+
+
+def std_tip(std: float | None) -> str | None:
+    if std_color(std) is None:
+        return None
+    return (
+        f"Scatter of {std:.3f} mag is unusually large (typical is 0.01-0.03). Look for clouds, "
+        "bad frames, or a problem with this star."
+    )
 
 
 # Extinction/flatness-over-time guide: a common rule of thumb is that atmospheric
@@ -57,31 +74,37 @@ def trend_color(trend: float | None) -> QColor | None:
     return GOOD if abs(trend) <= TREND_LIMIT else FLAG
 
 
-# VSX range tolerance: don't fuss over VSX range differences under
-# ~0.1 mag -- VSX's published range is just the observed min/max in the database, not
-# authoritative. A small overshoot beyond either edge is borderline, not a flag.
+# VSX range tolerance: VSX's published range is just the observed min/max in the
+# database, not authoritative, so small overshoots are normal; so is falling short of
+# it, when a session doesn't cover a full cycle. Only an overshoot beyond this is
+# flagged, since it can mean outlier frames.
 RANGE_TOLERANCE = 0.1
 
 
 def range_color(excess: float | None) -> QColor | None:
     """`excess` is how far outside the VSX range the observed range falls (0 or less
     if fully inside, None if there's no VSX comparison available)."""
-    if excess is None:
+    if excess is None or excess <= RANGE_TOLERANCE:
         return None
-    if excess <= 0:
-        return GOOD
-    if excess <= RANGE_TOLERANCE:
-        return BORDERLINE
-    return FLAG
+    return BORDERLINE
+
+
+def range_tip(excess: float | None) -> str | None:
+    if range_color(excess) is None:
+        return None
+    return (
+        f"Goes {excess:.2f} mag beyond the VSX range. Small overshoots are normal, but this "
+        "much can mean outlier frames, or a genuinely new extreme."
+    )
 
 
 # Before/after improvement guide for color indices: catalog color errors (~0.1 mag)
 # swamp typical deltas, so judging against them turns everything green. Instead judge
 # whether the transform moved the measured color closer to catalog. A change within
-# STD_GOOD (a realistic best consistency for a small telescope) is too small
-# to call either way. Getting worse is only flagged once the result also falls outside
-# the catalog error -- worse-but-still-within-catalog-error is borderline, not a flag.
-IMPROVEMENT_TOLERANCE = STD_GOOD
+# 0.005 (about the best consistency a small telescope achieves) is too small to call
+# either way. Getting worse is only flagged once the result also falls outside the
+# catalog error -- worse-but-still-within-catalog-error is borderline, not a flag.
+IMPROVEMENT_TOLERANCE = 0.005
 
 
 def improvement_color(
@@ -97,6 +120,22 @@ def improvement_color(
     if catalog_err is not None and abs(delta_after) <= catalog_err:
         return BORDERLINE
     return FLAG
+
+
+def improvement_tip(
+    delta_before: float | None, delta_after: float | None, catalog_err: float | None = None
+) -> str | None:
+    color = improvement_color(delta_before, delta_after, catalog_err)
+    if color is None:
+        return None
+    moved = f"({delta_before:+.3f} before, {delta_after:+.3f} after)"
+    if color == GOOD:
+        return f"The transform moved this color closer to catalog {moved}."
+    if abs(abs(delta_before) - abs(delta_after)) <= IMPROVEMENT_TOLERANCE:
+        return f"The transform barely changed this color {moved}."
+    if color == BORDERLINE:
+        return f"The transform moved this color slightly away from catalog, but it's still within the catalog error {moved}."
+    return f"The transform moved this color away from catalog, and outside the catalog error {moved}."
 
 
 def consistency_color(ratio: float | None) -> QColor | None:

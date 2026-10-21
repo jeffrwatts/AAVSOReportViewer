@@ -103,14 +103,19 @@ def test_coloring_thresholds():
     assert coloring.trend_color(-0.06) == coloring.FLAG
     assert coloring.trend_color(None) is None
 
-    # Absolute thresholds -- not a ratio to the photon-noise floor, which flagged
-    # nearly every real session red.
-    assert coloring.std_color(0.003) == coloring.GOOD
-    assert coloring.std_color(0.008) == coloring.BORDERLINE
-    assert coloring.std_color(0.02) == coloring.FLAG
+    # Only scatter well beyond the typical 0.01-0.03 is flagged; normal values stay plain.
+    assert coloring.std_color(0.003) is None
+    assert coloring.std_color(0.03) is None
+    assert coloring.std_color(0.06) == coloring.BORDERLINE
     assert coloring.std_color(None) is None
+    assert coloring.std_tip(0.03) is None and "unusually large" in coloring.std_tip(0.06)
 
-    assert coloring.range_color(-0.01) == coloring.GOOD
-    assert coloring.range_color(0.05) == coloring.BORDERLINE
-    assert coloring.range_color(0.2) == coloring.FLAG
+    # Falling short of, or slightly past, the VSX range is normal; only a big overshoot flags.
+    assert coloring.range_color(-0.01) is None
+    assert coloring.range_color(0.05) is None
+    assert coloring.range_color(0.2) == coloring.BORDERLINE
     assert coloring.range_color(None) is None
+    assert coloring.range_tip(0.05) is None and "beyond the VSX range" in coloring.range_tip(0.2)
+
+    assert "more than twice" in coloring.ratio_tip(0.25, 0.1)
+    assert coloring.ratio_tip(0.05, None) is None

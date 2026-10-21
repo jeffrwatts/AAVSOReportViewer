@@ -142,7 +142,9 @@ class EnsembleCompsDialog(QDialog):
                 ref = catalog.get(comp, {}).get(filt)
                 error = ref.error if ref is not None else None
                 # Same rule as the main table's Average deltas: within the catalog error is good.
-                tip = f"Catalog {filt} error ±{error:.3f}" if error else None
+                tip = coloring.ratio_tip(value, error) or (
+                    f"The chart lists no {filt} error for {comp}, so there's nothing to judge this offset against."
+                )
                 _cell(table, r, c, f"{value:+.3f}", coloring.ratio_color(value, error), tip)
         _fit_height(table)
         return catalog

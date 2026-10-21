@@ -115,6 +115,14 @@ class _FitTable(QTableWidget):
         self.fit_columns()
 
 
+def _mark(item: QTableWidgetItem, color, tip: str | None) -> None:
+    """Color a cell's text and give the reason as its tooltip (coloring.*_tip)."""
+    if color is not None:
+        item.setForeground(color)
+    if tip:
+        item.setToolTip(tip)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, session: Session):
         super().__init__()
@@ -368,8 +376,8 @@ class MainWindow(QMainWindow):
                 # precision guide would be a category error. The check star's
                 # colored Std already serves as the proxy for the target's likely
                 # measurement error.
-                self.table.setItem(r, 6, self._numeric_item(row.std, row.needs_general_report, None if is_target else coloring.std_color(row.std)))
-                self.table.setItem(r, 7, self._numeric_item(row.std_after, False, None if is_target else coloring.std_color(row.std_after)))
+                self.table.setItem(r, 6, self._std_item(row.std, row.needs_general_report, is_target))
+                self.table.setItem(r, 7, self._std_item(row.std_after, False, is_target))
                 self.table.setItem(r, 8, self._numeric_item(row.kreferr))
                 self.table.setItem(r, 9, self._vsx_range_item(row))
                 self.table.setItem(r, 10, self._snr_item(row.avg_snr, row.avg_snr_available))
@@ -407,9 +415,11 @@ class MainWindow(QMainWindow):
                 if has_after:
                     measured = self._average_item(row.measured, row.delta, None, False)
                     after = self._average_item(row.measured_after, row.delta_after, None, False)
-                    color = coloring.improvement_color(row.delta, row.delta_after, row.catalog_err)
-                    if color is not None:
-                        after.setForeground(color)
+                    _mark(
+                        after,
+                        coloring.improvement_color(row.delta, row.delta_after, row.catalog_err),
+                        coloring.improvement_tip(row.delta, row.delta_after, row.catalog_err),
+                    )
                 else:
                     measured = self._average_item(row.measured, row.delta, row.catalog_err, False)
                     after = self._dash_item()
@@ -466,10 +476,15 @@ class MainWindow(QMainWindow):
         else:
             text = f"{value:.3f}" if delta is None else f"{value:.3f} ({delta:+.3f})"
             item = QTableWidgetItem(text)
-            color = coloring.ratio_color(delta, kreferr)
-            if color is not None:
-                item.setForeground(color)
+            _mark(item, coloring.ratio_color(delta, kreferr), coloring.ratio_tip(delta, kreferr))
         item.setTextAlignment(Qt.AlignCenter)
+        return item
+
+    @classmethod
+    def _std_item(cls, std: float | None, clickable: bool, is_target: bool) -> QTableWidgetItem:
+        item = cls._numeric_item(std, clickable)
+        if not is_target:
+            _mark(item, coloring.std_color(std), coloring.std_tip(std))
         return item
 
     @staticmethod
@@ -486,9 +501,7 @@ class MainWindow(QMainWindow):
             text = f"{row.minimum:.3f}–{row.maximum:.3f}"
         item = QTableWidgetItem(text)
         item.setTextAlignment(Qt.AlignCenter)
-        color = coloring.range_color(row.vsx_excess)
-        if color is not None:
-            item.setForeground(color)
+        _mark(item, coloring.range_color(row.vsx_excess), coloring.range_tip(row.vsx_excess))
         return item
 
     @staticmethod
@@ -499,9 +512,7 @@ class MainWindow(QMainWindow):
             text = f"{row.range_after[0]:.3f}–{row.range_after[1]:.3f}"
         item = QTableWidgetItem(text)
         item.setTextAlignment(Qt.AlignCenter)
-        color = coloring.range_color(row.vsx_excess_after)
-        if color is not None:
-            item.setForeground(color)
+        _mark(item, coloring.range_color(row.vsx_excess_after), coloring.range_tip(row.vsx_excess_after))
         return item
 
     @staticmethod
