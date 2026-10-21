@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QRadioButton,
     QScrollArea,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -31,7 +32,6 @@ from photometry_workbench.models.session import Session
 from photometry_workbench.parsing.aavso_report import AavsoReport
 from photometry_workbench.parsing.aavso_writer import format_report, write_aavso_report
 from photometry_workbench.submission.builder import (
-    CHECK_MAG_LIMIT,
     ErrorMethod,
     Submission,
     SubmissionError,
@@ -105,6 +105,22 @@ class _ChoiceCard(QFrame):
     def _restyle(self, *_):
         border = "2px solid palette(highlight)" if self.radio.isChecked() else "1px solid palette(mid)"
         self.setStyleSheet(f"QFrame#card {{ border: {border}; border-radius: 8px; }}")
+
+
+def _card_row(cards: list["_ChoiceCard"], page: QWizardPage) -> tuple[QWidget, QButtonGroup]:
+    """Cards side by side, equal in height and no taller than the tallest needs, as one
+    choice (button ids in order)."""
+    row = QWidget()
+    row.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+    layout = QHBoxLayout(row)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(12)
+    group = QButtonGroup(page)
+    for i, card in enumerate(cards):
+        group.addButton(card.radio, i)
+        layout.addWidget(card, 1)
+    group.idToggled.connect(lambda *_: page.completeChanged.emit())
+    return row, group
 
 
 def _read_only_table(columns: list[str]) -> QTableWidget:
@@ -186,8 +202,6 @@ class _CombinePage(QWizardPage):
         self._wizard = wizard
         self.setTitle("How will you report these frames?")
         layout = QVBoxLayout(self)
-        cards = QHBoxLayout()
-        cards.setSpacing(12)
         combine = _ChoiceCard(
             "One observation per filter",
             combine_diagram(),
@@ -200,12 +214,8 @@ class _CombinePage(QWizardPage):
             "Every frame reported as its own point, to follow the star's changes through the "
             "session. For a short-period pulsator or an eclipse.",
         )
-        self.choice = QButtonGroup(self)
-        for i, card in enumerate((combine, light_curve)):
-            self.choice.addButton(card.radio, i)
-            cards.addWidget(card, 1)
-        self.choice.idToggled.connect(lambda *_: self.completeChanged.emit())
-        layout.addLayout(cards)
+        row, self.choice = _card_row([combine, light_curve], self)
+        layout.addWidget(row)
         self.summary = _wrapped("", gray=True)
         layout.addWidget(self.summary)
         layout.addStretch()
@@ -231,8 +241,6 @@ class _VariesPage(QWizardPage):
         self._wizard = wizard
         self.setTitle("Will the target change during these frames?")
         layout = QVBoxLayout(self)
-        cards = QHBoxLayout()
-        cards.setSpacing(12)
         steady = _ChoiceCard(
             "Steady during these frames",
             steady_diagram(),
@@ -246,51 +254,20 @@ class _VariesPage(QWizardPage):
             "include that change. The check star's scatter is the uncertainty instead. For a fast "
             "pulsator or a flaring star.",
         )
-        self.choice = QButtonGroup(self)
-        for i, card in enumerate((steady, varies)):
-            self.choice.addButton(card.radio, i)
-            cards.addWidget(card, 1)
-        self.choice.idToggled.connect(lambda *_: self.completeChanged.emit())
-        layout.addLayout(cards)
+        row, self.choice = _card_row([steady, varies], self)
+        layout.addWidget(row)
         self.decide = _wrapped("")
         layout.addWidget(self.decide)
-        layout.addWidget(_wrapped(
-            "For reference, the target's and check star's scatter. A fainter or transformed target "
-            "often scatters a bit more than the check star, even when steady. The check star works "
-            f"best within {CHECK_MAG_LIMIT:g} mag of the target.", gray=True,
-        ))
-        self.table = _read_only_table(
-            ["Filter", "Frames", "Target scatter (Std)", "Check star scatter (Std)", "Target vs check star"]
-        )
-        layout.addWidget(self.table)
         layout.addStretch()
 
     def initializePage(self):
-        report = self._wizard.source_report()
-        df = report.df
+        df = self._wizard.source_report().df
         minutes = (df["DATE"].max() - df["DATE"].min()) * 1440
         self.decide.setText(
             "Decide from what you know about the star: do you expect it to change over the "
             f"{minutes:.1f} minutes these frames span? A supernova or a slow variable doesn't; a "
             "fast pulsator or a flaring star can."
         )
-        self.table.setRowCount(len(report.filters))
-        for r, filt in enumerate(report.filters):
-            rows = df.loc[df["FILT"] == filt]
-            separation = rows["MAG"].mean() - rows["KEFF"].mean()
-            _set_cell(self.table, r, 0, filt)
-            _set_cell(self.table, r, 1, str(len(rows)))
-            _set_cell(self.table, r, 2, f"{rows['MAG'].std(ddof=1):.3f}")
-            _set_cell(self.table, r, 3, f"{rows['KEFF'].std(ddof=1):.3f}")
-            side = "fainter" if separation > 0 else "brighter"
-            item = _set_cell(self.table, r, 4, f"{abs(separation):.2f} mag {side}")
-            if abs(separation) > CHECK_MAG_LIMIT:
-                item.setForeground(coloring.FLAG)
-                item.setToolTip(
-                    f"More than {CHECK_MAG_LIMIT:g} mag apart, so the check star's scatter is a poor "
-                    "stand-in for the target's."
-                )
-        _fit_height(self.table)
 
     def isComplete(self):
         return self.choice.checkedId() >= 0
