@@ -48,6 +48,13 @@ def _cell(table: QTableWidget, r: int, c: int, text: str, color=None, tooltip: s
     table.setItem(r, c, item)
 
 
+def _caption(text: str) -> QLabel:
+    label = QLabel(text)
+    label.setWordWrap(True)
+    label.setStyleSheet("color: gray; font-size: 11px; padding: 2px 0 4px 0;")
+    return label
+
+
 def _heading(text: str) -> QLabel:
     label = QLabel(text)
     label.setStyleSheet("font-size: 13px; font-weight: 600; padding: 8px 0 4px 0;")
@@ -59,16 +66,29 @@ class EnsembleCompsDialog(QDialog):
         super().__init__(parent)
         self.session = session
         self.setWindowTitle(f"{session.star_name} — Ensemble Comps")
+        self.setMinimumWidth(560)
         layout = QVBoxLayout(self)
         filters = session.filters
 
         layout.addWidget(_heading("Membership: frames each comparison star was measured in"))
         self.membership_table = _table(["Comp", "Catalog " + " / ".join(filters), *filters])
         layout.addWidget(self.membership_table)
+        layout.addWidget(_caption(
+            "The ensemble transform treats the comps as one average star, so that average has to be "
+            "the same stars in every filter. All green means every comp was measured in every frame."
+        ))
 
         layout.addWidget(_heading("Measured − catalog (median over frames)"))
         self.offsets_table = _table(["Comp"])
         layout.addWidget(self.offsets_table)
+        layout.addWidget(_caption(
+            "How far each comp reads from its catalog value, measured against the other comps. Green is "
+            "within that comp's catalog error. A comp that's far off may have a bad catalog value, be "
+            "variable, or be blended with a neighbor, and is worth dropping. "
+            + ("Columns marked (After) are after the transform, which removes the part of each offset that "
+            "comes from a comp's color differing from the others'." if session.after_coeffs is not None else "These are before the transform. Apply it to add an (After) column per filter, which removes "
+            "the part of each offset that comes from a comp's color differing from the others'.")
+        ))
         self.problem = QLabel()
         self.problem.setWordWrap(True)
         self.problem.setStyleSheet(f"color: {coloring.FLAG.name()};")
@@ -100,7 +120,7 @@ class EnsembleCompsDialog(QDialog):
                 if catalog is not None and filt not in mags:
                     color, tip = coloring.FLAG, f"No catalog {filt} magnitude, so it can't be used in a transform."
                 elif m.measured == m.frames:
-                    color, tip = coloring.GOOD, None
+                    color, tip = coloring.GOOD, f"Measured in every {filt} frame."
                 elif m.measured == 0:
                     color, tip = coloring.FLAG, f"Not measured in any {filt} frame."
                 else:
