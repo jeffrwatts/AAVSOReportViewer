@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtCore import QEvent, QObject, QSettings, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -16,11 +16,12 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from photometry_workbench import APP_NAME
+from photometry_workbench import APP_ID, APP_NAME
 from photometry_workbench.models.session import (
     SECTION_CHECK,
     SECTION_COMPARISON,
@@ -44,6 +45,8 @@ from photometry_workbench.ui.startup_dialog import StartupDialog
 from photometry_workbench.ui.step_strip import CURRENT, DONE, UPCOMING, StepState, StepStrip
 from photometry_workbench.ui.submission_wizard import SubmissionWizard
 from photometry_workbench.ui.transform_dialog import TransformDialog
+
+_DIAGNOSTICS_KEY = "view/diagnostics_open"
 
 # Column order. The "(After)" columns are hidden entirely (not just blank) unless the
 # transform has been applied, to keep the table lean.
@@ -174,6 +177,25 @@ class MainWindow(QMainWindow):
         self.chart_grid = QGridLayout()
         self.chart_grid.setSpacing(8)
         layout.addLayout(self.chart_grid)
+
+        # Diagnostics (SNR, airmass, FWHM, Max ADU, skyglow) matter mostly when
+        # something's off, so they're folded away by default; the choice is remembered.
+        self.diag_toggle = QToolButton()
+        self.diag_toggle.setCheckable(True)
+        self.diag_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.diag_toggle.setText("Diagnostics: SNR, Airmass, FWHM, Max ADU, Skyglow")
+        self.diag_toggle.setStyleSheet("QToolButton { border: none; font-size: 13px; font-weight: 600; padding: 8px 0; }")
+        self.diag_toggle.toggled.connect(self._show_diagnostics)
+        layout.addWidget(self.diag_toggle)
+        self.diag_widget = QWidget()
+        self.diag_grid = QGridLayout(self.diag_widget)
+        self.diag_grid.setContentsMargins(0, 0, 0, 0)
+        self.diag_grid.setSpacing(8)
+        layout.addWidget(self.diag_widget)
+        layout.addStretch(1)  # spare height goes below the content, not between the rows
+        open_ = QSettings(APP_ID, APP_ID).value(_DIAGNOSTICS_KEY, False, type=bool)
+        self.diag_toggle.setChecked(open_)
+        self._show_diagnostics(open_)
 
         self.thumbnails: dict[str, ChartThumbnail] = {}
 
@@ -529,12 +551,18 @@ class MainWindow(QMainWindow):
     # -- chart grid -----------------------------------------------------------------
 
     def _clear_chart_grid(self) -> None:
-        while self.chart_grid.count():
-            item = self.chart_grid.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
+        for grid in (self.chart_grid, self.diag_grid):
+            while grid.count():
+                item = grid.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
         self.thumbnails.clear()
+
+    def _show_diagnostics(self, show: bool) -> None:
+        self.diag_toggle.setArrowType(Qt.DownArrow if show else Qt.RightArrow)
+        self.diag_widget.setVisible(show)
+        QSettings(APP_ID, APP_ID).setValue(_DIAGNOSTICS_KEY, show)
 
     def _make_thumbnail(self, key: str, title: str) -> ChartThumbnail:
         thumb = ChartThumbnail(title)
@@ -575,7 +603,7 @@ class MainWindow(QMainWindow):
             self.chart_grid.addWidget(light_curve, grid_row, 0, 1, 2)
         grid_row += 1
 
-        # Row 2: SNR + Airmass, paired.
+        # Diagnostics section (collapsible): SNR + Airmass,
         snr_thumb = self._make_thumbnail("snr", "SNR")
         if s.has_general_report:
             snr_thumb.clicked.connect(
@@ -589,7 +617,7 @@ class MainWindow(QMainWindow):
         else:
             snr_thumb.clicked.connect(self._prompt_for_general_report)
             snr_thumb.set_unavailable()
-        self.chart_grid.addWidget(snr_thumb, grid_row, 0)
+        self.diag_grid.addWidget(snr_thumb, 0, 0)
 
         airmass_thumb = self._make_thumbnail("airmass", "Airmass")
         airmass_thumb.clicked.connect(
@@ -598,10 +626,9 @@ class MainWindow(QMainWindow):
         airmass_thumb.render(
             lambda ax, thumbnail: plotting.plot_airmass(ax, s.airmass_series(), thumbnail=thumbnail)
         )
-        self.chart_grid.addWidget(airmass_thumb, grid_row, 1)
-        grid_row += 1
+        self.diag_grid.addWidget(airmass_thumb, 0, 1)
 
-        # Row 3: FWHM + Max ADU, paired.
+        # then FWHM + Max ADU,
         fwhm_thumb = self._make_thumbnail("fwhm", "FWHM")
         if s.has_general_report:
             fwhm_thumb.clicked.connect(
@@ -615,7 +642,7 @@ class MainWindow(QMainWindow):
         else:
             fwhm_thumb.clicked.connect(self._prompt_for_general_report)
             fwhm_thumb.set_unavailable()
-        self.chart_grid.addWidget(fwhm_thumb, grid_row, 0)
+        self.diag_grid.addWidget(fwhm_thumb, 1, 0)
 
         maxadu_thumb = self._make_thumbnail("max_adu", "Max ADU")
         if s.has_general_report:
@@ -630,10 +657,9 @@ class MainWindow(QMainWindow):
         else:
             maxadu_thumb.clicked.connect(self._prompt_for_general_report)
             maxadu_thumb.set_unavailable()
-        self.chart_grid.addWidget(maxadu_thumb, grid_row, 1)
-        grid_row += 1
+        self.diag_grid.addWidget(maxadu_thumb, 1, 1)
 
-        # Row 4: Skyglow, alone (Tracking Error's former pairing slot is dropped).
+        # then Skyglow alone.
         skyglow_thumb = self._make_thumbnail("skyglow", "Skyglow")
         if s.has_general_report:
             skyglow_thumb.clicked.connect(
@@ -647,10 +673,9 @@ class MainWindow(QMainWindow):
         else:
             skyglow_thumb.clicked.connect(self._prompt_for_general_report)
             skyglow_thumb.set_unavailable()
-        self.chart_grid.addWidget(skyglow_thumb, grid_row, 0)
-        grid_row += 1
+        self.diag_grid.addWidget(skyglow_thumb, 2, 0)
 
-        # Row 5: Check Star Before/After + Target Before/After, paired -- only shown
+        # Row 2: Check Star Before/After + Target Before/After, paired -- only shown
         # once the transform has been applied.
         if s.has_after_report:
             check_ba_thumb = self._make_thumbnail("check_before_after", "Check Star Before/After")
