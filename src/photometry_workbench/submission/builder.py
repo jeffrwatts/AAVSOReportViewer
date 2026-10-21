@@ -47,12 +47,12 @@ class ErrorMethod(str, Enum):
     @property
     def description(self) -> str:
         return {
-            ErrorMethod.STD_TARGET: "Frames combined per filter; MERR = standard deviation of the target's frames.",
-            ErrorMethod.STD_CHECK: "Frames combined per filter; MERR = standard deviation of the check star's frames "
+            ErrorMethod.STD_TARGET: "Frames combined per filter; uncertainty = standard deviation of the target's frames.",
+            ErrorMethod.STD_CHECK: "Frames combined per filter; uncertainty = standard deviation of the check star's frames "
             "(the target may vary during the observation).",
-            ErrorMethod.SNR: "Each frame reported separately with one comparison star; MERR = the SNR-based "
+            ErrorMethod.SNR: "Each frame reported separately with one comparison star; uncertainty = the SNR-based "
             "per-frame uncertainty (TA's propagated value when transformed).",
-            ErrorMethod.COMP_SPREAD: "Each frame reported separately with an ensemble; MERR = spread of the "
+            ErrorMethod.COMP_SPREAD: "Each frame reported separately with an ensemble; uncertainty = spread of the "
             "target estimates across the comparison stars, combined with the SNR uncertainty.",
         }[self]
 

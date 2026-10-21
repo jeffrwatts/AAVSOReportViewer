@@ -299,7 +299,7 @@ class _PreviewPage(QWizardPage):
         # own errors, judged against the MERR being submitted. It's a systematic
         # uncertainty, so it's shown for reference and not added to MERR.
         self.coeff_box, self.coeff_table = _titled_table(
-            checks, "Transform coefficient uncertainty (not included in MERR)", ["Filter", "MERR", "Coeff ±"]
+            checks, "Transform coefficient uncertainty (not included in the reported uncertainty)", ["Filter", "Uncertainty", "Coeff ±"]
         )
         checks.addStretch()
         self.submission: Submission | None = None
@@ -324,7 +324,7 @@ class _PreviewPage(QWizardPage):
             self.warning_label.clear()
             self.completeChanged.emit()
             return
-        self.method_label.setText(method.description)
+        self.method_label.setText(method.description + " The uncertainty goes in the report's MERR column.")
         self.warning_label.setText("\n".join(self.submission.warnings))
         df = self.submission.report.df
         self.table.setRowCount(len(df))
@@ -352,7 +352,7 @@ class _PreviewPage(QWizardPage):
         # One MERR per filter for a combined point; a light curve's vary by frame.
         merr = self.submission.report.df.groupby("FILT")["MERR"].median()
         light_curve = not self._wizard.combine_page.combine()
-        self.coeff_table.setHorizontalHeaderLabels(["Filter", "MERR (median)" if light_curve else "MERR", "Coeff ±"])
+        self.coeff_table.setHorizontalHeaderLabels(["Filter", "Uncertainty (median)" if light_curve else "Uncertainty", "Coeff ±"])
         filters = [f for f in self.submission.report.filters if f in sensitivity]
         self.coeff_table.setRowCount(len(filters))
         for r, filt in enumerate(filters):
@@ -383,7 +383,7 @@ class _PreviewPage(QWizardPage):
         if report.is_ensemble and spread is not None:
             source = "the spread across the comparison stars combined with the SNR uncertainty (Technique #3)"
         else:
-            source = "its MERR (the SNR uncertainty, as propagated by the transform when transformed)"
+            source = "its SNR uncertainty (as propagated by the transform when transformed)"
         rows = frame_consistency(report, spread)
         self.consistency_table.setRowCount(len(rows))
         for r, row in enumerate(rows):
@@ -392,7 +392,7 @@ class _PreviewPage(QWizardPage):
                 f"Median over the {row.filt} frames of each frame's uncertainty: {source}."
             )
             _set_cell(self.consistency_table, r, 2, f"{row.across:.3f}").setToolTip(
-                "Std of the target's magnitude across the frames -- the MERR being submitted."
+                "Std of the target's magnitude across the frames -- the uncertainty being submitted."
             )
             item = _set_cell(self.consistency_table, r, 3, f"{row.ratio:.1f}×")
             color = coloring.consistency_color(row.ratio)
