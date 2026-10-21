@@ -123,3 +123,21 @@ def test_frame_consistency_sn_transformed():
     sub = build_submission(transformed, ErrorMethod.STD_TARGET).report.df.set_index("FILT")
     for filt, r in rows.items():
         assert sub.at[filt, "MERR"] == pytest.approx(round(r.across, 3))
+
+
+def test_target_after_columns_are_the_combined_submission():
+    """The main table's target Average (After) and Std (After) are exactly the combined
+    point and uncertainty the wizard submits (target-Std method)."""
+    from photometry_workbench.models.session import SECTION_TARGETS, Session
+
+    session = Session(parse_aavso_report(FIXTURES / f"{SN}.txt"))
+    session.apply_transform(parse_ini_coeffs(), lookup_auids=False)
+    targets = {r.filt: r for r in session.build_summary_rows() if r.section == SECTION_TARGETS}
+    sub = build_submission(session.after, ErrorMethod.STD_TARGET).report.df.set_index("FILT")
+    for filt in "BVR":
+        assert targets[filt].average_after == pytest.approx(sub.at[filt, "MAG"], abs=0.0005)
+        assert targets[filt].std_after == pytest.approx(sub.at[filt, "MERR"], abs=0.0005)
+
+
+def parse_ini_coeffs():
+    return parse_tg_ini(FIXTURES / "SA114-VIS.ini")

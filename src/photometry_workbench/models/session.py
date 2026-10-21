@@ -456,11 +456,14 @@ class Session:
         vsx = self.vsx_range()
         for filt in self.filters:
             g = df.loc[df["FILT"] == filt, "MAG"]
-            range_after = None
+            range_after = average_after = std_after = None
             if self.after is not None:
                 ag = self.after.df.loc[self.after.df["FILT"] == filt, "MAG"]
                 if len(ag):
                     range_after = (float(ag.min()), float(ag.max()))
+                    # For a combined point these are what gets submitted: the transformed
+                    # magnitude and (target-Std method) its uncertainty.
+                    average_after, std_after = _nan_to_none(ag.mean()), _nan_to_none(ag.std())
             rows.append(
                 SummaryRow(
                     SECTION_TARGETS,
@@ -475,6 +478,8 @@ class Session:
                     vsx_bright=vsx[0] if vsx and filt == "V" else None,
                     vsx_faint=vsx[1] if vsx and filt == "V" else None,
                     range_after=range_after,
+                    average_after=average_after,
+                    std_after=std_after,
                 )
             )
 
