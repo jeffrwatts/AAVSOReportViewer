@@ -111,9 +111,10 @@ def range_tip(excess: float | None) -> str | None:
 
 def consistency_color(ratio: float | None) -> QColor | None:
     """The Std across frames vs the single-frame uncertainty (submission.builder.
-    frame_consistency): fine below 1.5x, flagged at or above it."""
+    frame_consistency): fine below 1.5x, worth a look at or above it. Not a fault: the
+    across-frames scatter is what's reported, so the extra is already in the uncertainty."""
     from photometry_workbench.submission.builder import CONSISTENCY_LIMIT
 
     if ratio is None or ratio != ratio:
         return None
-    return GOOD if ratio < CONSISTENCY_LIMIT else FLAG
+    return GOOD if ratio < CONSISTENCY_LIMIT else BORDERLINE

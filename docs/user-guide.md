@@ -223,8 +223,11 @@ flowchart TD
   than the SNR error alone: for this session, 0.012/0.032/0.029 in V/B/R against the
   check star's 0.012/0.029/0.026.
 
-For combined points, the preview also compares the scatter across frames with what a
-single frame's uncertainty predicts, and flags a scatter 1.5 times or more higher.
+For combined points, the preview also asks whether the frames agree as well as their
+SNR predicts: the scatter across frames against one frame's SNR error. Around 1x, they
+do. At 1.5x or more it's marked in orange as worth a look: some extra scatter from thin
+cloud, a bad frame, or each frame's color noise after a transform. That extra is already
+in the reported uncertainty.
 
 ## Sharing a light curve
 

@@ -140,7 +140,7 @@ def _fit_height(table: QTableWidget) -> None:
 
 
 def _titled_table(
-    parent_layout: QHBoxLayout, title: str, columns: list[str], caption: str = ""
+    parent_layout: QVBoxLayout, title: str, columns: list[str], caption: str = ""
 ) -> tuple[QWidget, QTableWidget]:
     box = QWidget()
     layout = QVBoxLayout(box)
@@ -381,20 +381,30 @@ class _PreviewPage(QWizardPage):
         self.table = _read_only_table(_PREVIEW_COLUMNS)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.itemSelectionChanged.connect(self._show_notes)
-        self.table.setMinimumHeight(200)  # about five rows, however small the window
         layout.addWidget(self.table, 2)
         layout.addWidget(QLabel("NOTES for the selected row: how it was measured and transformed"))
         self.notes = QPlainTextEdit()
         self.notes.setReadOnly(True)
         self.notes.setFixedHeight(90)
         layout.addWidget(self.notes)
-        checks = QHBoxLayout()
+        checks = QVBoxLayout()
+        checks.setSpacing(16)
         layout.addLayout(checks)
         # The consistency check for a combined point: the Std across frames should be about
         # the same as, or lower than, what a single frame's uncertainty predicts.
         self.consistency_box, self.consistency_table = _titled_table(
-            checks, "Single frame vs across frames", ["Filter", "Single frame", "Across frames", "Ratio"]
+            checks,
+            "Do the frames agree as well as their SNR predicts?",
+            ["Filter", "One frame's SNR error", "Scatter across frames", "Ratio"],
+            caption=(
+                "One frame's SNR error is the uncertainty a single frame would have (median over "
+                "the frames). The scatter across frames is the uncertainty being reported. About 1x "
+                "means the frames agree as well as their SNR allows. Higher means some extra "
+                "scatter, from thin cloud, a bad frame, or (after a transform) each frame's own "
+                "color noise. It's already in the reported uncertainty."
+            ),
         )
+        self.consistency_box.setMaximumWidth(_CAPTION_WIDTH + 20)
         # How much the transformed magnitudes depend on the transform coefficients'
         # own errors, judged against the MERR being submitted. It's a systematic
         # uncertainty, so it's shown for reference and not added to MERR.
@@ -410,7 +420,6 @@ class _PreviewPage(QWizardPage):
             ),
         )
         self.coeff_box.setMaximumWidth(_CAPTION_WIDTH + 20)
-        checks.addStretch()
         self.submission: Submission | None = None
 
     def initializePage(self):
@@ -449,6 +458,11 @@ class _PreviewPage(QWizardPage):
                 fmt = _PREVIEW_FORMATS.get(column)
                 _set_cell(self.table, r, c, fmt.format(value) if fmt and value == value else str(value))
         self.table.selectRow(0)
+        if len(df) <= 10:
+            _fit_height(self.table)  # a combined point's few rows, without empty space
+        else:
+            self.table.setMinimumHeight(200)  # about five rows, however small the window
+            self.table.setMaximumHeight(16777215)
         if method == ErrorMethod.STD_TARGET:
             self._fill_consistency_table()
         self._fill_coeff_table()
@@ -516,8 +530,9 @@ class _PreviewPage(QWizardPage):
             if color is not None:
                 item.setForeground(color)
             item.setToolTip(
-                "About 1× or lower is expected. 1.5× or more means something is worth tracking down: "
-                "one bad frame, clouds, or (when transformed) noise in each frame's color."
+                "About 1× or lower: the frames agree as well as their SNR allows. 1.5× or more: extra "
+                "scatter worth a look (thin cloud, a bad frame, or each frame's color noise after a "
+                "transform). It's already included in the reported uncertainty."
             )
         _fit_height(self.consistency_table)
         self.consistency_box.setVisible(bool(rows))
