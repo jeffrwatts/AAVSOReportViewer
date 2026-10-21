@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from photometry_workbench import APP_ID, APP_NAME
+from photometry_workbench import APP_ID, APP_NAME, PROJECT_URL, app_version
 from photometry_workbench.models.session import (
     SECTION_CHECK,
     SECTION_COMPARISON,
@@ -41,6 +41,7 @@ from photometry_workbench.ui.chart_detail_dialog import (
     LightCurveDetailDialog,
     TargetBeforeAfterDetailDialog,
 )
+from photometry_workbench.ui.app_settings import last_folder, remember_folder
 from photometry_workbench.ui.chart_thumbnail import ChartThumbnail
 from photometry_workbench.ui.share_plot_dialog import SharePlotDialog
 from photometry_workbench.ui.startup_dialog import StartupDialog
@@ -138,7 +139,7 @@ class MainWindow(QMainWindow):
         self.session = session
         self._saved_path: Path | None = None
 
-        self.setWindowTitle(APP_NAME)
+        self.setWindowTitle(f"{APP_NAME} {app_version()}")
 
         central = QWidget()
         layout = QVBoxLayout(central)
@@ -150,6 +151,9 @@ class MainWindow(QMainWindow):
         share = QPushButton("Share Plot…")
         share.clicked.connect(self._open_share_plot)
         header_row.addWidget(share)
+        about = QPushButton("About")
+        about.clicked.connect(self._show_about)
+        header_row.addWidget(about)
         layout.addLayout(header_row)
 
         self.table = self._make_table(TABLE_COLUMNS)
@@ -236,28 +240,52 @@ class MainWindow(QMainWindow):
             return
         try:
             report = parse_aavso_report(dialog.aavso_report_path())
-            general_path = dialog.general_report_path()
-            general = parse_general_report(general_path) if general_path else None
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Failed to load report", str(exc))
             return
-        self.session = Session(report, general)
+        remember_folder(dialog.aavso_report_path())
+        self.session = Session(report)
         self._saved_path = None
+        general_path = dialog.general_report_path()
+        if general_path:
+            self._attach_general_report(general_path, "Opened the AAVSO Report without it.")
         self._refresh_all()
 
     def _prompt_for_general_report(self) -> None:
+        source = self.session.aavso.source_path
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open General Report", "", "Text files (*.txt);;All files (*)"
+            self, "Open General Report", str(source.parent) if source else last_folder(),
+            "Text files (*.txt);;All files (*)",
         )
-        if not path:
-            return
+        if path and self._attach_general_report(path, "Nothing was added."):
+            self._refresh_all()
+
+    def _show_about(self) -> None:
+        QMessageBox.about(
+            self,
+            f"About {APP_NAME}",
+            f"<b>{APP_NAME}</b> {app_version()}<br><br>"
+            "Inspect, transform, and submit VPhot photometry for the AAVSO.<br><br>"
+            "Independent project, not affiliated with the AAVSO. MIT License.<br>"
+            f"<a href='{PROJECT_URL}'>{PROJECT_URL}</a>",
+        )
+
+    def _attach_general_report(self, path: str, otherwise: str) -> bool:
+        """Parse and check a General Report against the open session and attach it, or
+        explain why not (ending with `otherwise`)."""
+        QApplication.setOverrideCursor(Qt.WaitCursor)  # the ensemble check may fetch the chart
         try:
             general = parse_general_report(path)
+            problem = self.session.general_report_problem(general)
         except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Failed to load General Report", str(exc))
-            return
+            problem = str(exc)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if problem:
+            QMessageBox.warning(self, "General Report not used", f"{Path(path).name}: {problem}\n\n{otherwise}")
+            return False
         self.session.attach_general_report(general)
-        self._refresh_all()
+        return True
 
     def _apply_transform(self) -> None:
         reason = untransformable_reason(self.session.aavso)
@@ -667,8 +695,12 @@ class MainWindow(QMainWindow):
                 StepState("Build the report to submit to the AAVSO.", UPCOMING, enabled=False),
             ]
         n_frames = int((s.aavso.df["FILT"] == s.filters[0]).sum()) if s.filters else 0
-        comps = f"ensemble of {len(s.comp_star_names())} comps" if s.is_ensemble else "single comp"
-        general = "General Report loaded" if s.has_general_report else "no General Report"
+        n_comps = len(s.comp_star_names())
+        comps = (f"ensemble of {n_comps} comps" if n_comps else "ensemble") if s.is_ensemble else "single comp"
+        general = "no General Report"
+        if s.has_general_report:
+            missing = s.general.missing_diagnostics
+            general = "General Report loaded" + (f" (no {', '.join(missing)})" if missing else "")
         inspect_actions = [("Open Another…", self._open_report)]
         if not s.has_general_report:
             inspect_actions.append(("Add General Report…", self._prompt_for_general_report))

@@ -11,7 +11,7 @@ from photometry_workbench.models.session import Session
 from photometry_workbench.parsing.aavso_report import parse_aavso_report
 from photometry_workbench.parsing.aavso_writer import write_aavso_report
 from photometry_workbench.parsing.chart_photometry import _BAND_TO_FILTER, ChartMag
-from photometry_workbench.parsing.general_report import parse_general_report
+from photometry_workbench.parsing.general_report import GeneralReportError, parse_general_report
 from photometry_workbench.submission.builder import ErrorMethod, SubmissionError, build_submission, frame_consistency
 from photometry_workbench.transform.coefficients import parse_tg_ini
 from photometry_workbench.transform.engine import TransformError, comp_estimates, per_comp_estimates, transform_report
@@ -224,3 +224,45 @@ def test_transformed_comp_rows(session):
     for comp in COMPS:
         v = offsets.loc[offsets["FILT"] == "V", comp] + catalog[comp]["V"].mag
         assert abs(v.mean() - general.loc[general["Filter"] == "V", comp].mean()) < 1e-6
+
+
+def test_complete_general_report_has_no_problem(session):
+    assert session.general_report_problem(session.general) is None
+
+
+def test_general_report_missing_a_comp_is_refused(session):
+    """VPhot's General Export lets each star be unchecked; without comp 135 the per-comp
+    spread would be built from one comp. Its catalog average no longer matches CREFMAG."""
+    general = parse_general_report(GENERAL)
+    general.df = general.df.drop(columns=["135"])
+    general.star_columns.remove("135")
+    problem = session.general_report_problem(general)
+    assert problem and "at least one comparison star is missing" in problem and "(130)" in problem
+
+
+def test_general_report_without_comps_is_refused(session):
+    general = parse_general_report(GENERAL)
+    general.star_columns = [c for c in general.star_columns if c not in ("130", "135")]
+    assert "no comparison star columns" in session.general_report_problem(general)
+
+
+def test_general_report_from_another_session_is_refused(session):
+    general = parse_general_report(GENERAL)
+    general.df["JD"] += 1.0
+    assert "different session" in session.general_report_problem(general)
+
+
+def test_unreadable_general_exports(tmp_path):
+    text = GENERAL.read_text()
+    comma = tmp_path / "comma.txt"
+    comma.write_text(text.replace("\t", ","))
+    with pytest.raises(GeneralReportError, match="comma-separated"):
+        parse_general_report(comma)
+    truncated = tmp_path / "truncated.txt"
+    truncated.write_text(text.replace("2461324.", "324."))
+    with pytest.raises(GeneralReportError, match="truncated"):
+        parse_general_report(truncated)
+    no_filter = tmp_path / "no_filter.txt"
+    no_filter.write_text("\n".join("\t".join(c for i, c in enumerate(l.split("\t")) if i != 1) for l in text.splitlines()))
+    with pytest.raises(GeneralReportError, match="no Filter column"):
+        parse_general_report(no_filter)

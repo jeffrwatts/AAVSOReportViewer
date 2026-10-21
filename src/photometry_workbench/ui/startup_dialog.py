@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -11,10 +13,14 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from photometry_workbench.parsing.general_report import EXPORT_HELP
+from photometry_workbench.ui.app_settings import last_folder
 
 
 class _FilePickerRow:
-    def __init__(self, grid: QGridLayout, row: int, label: str, description: str):
+    def __init__(self, grid: QGridLayout, row: int, label: str, description: str, start_folder=last_folder):
+        self._start_folder = start_folder
+        """Callable giving the folder Browse… opens in when the field is empty."""
         self.edit = QLineEdit()
         self.edit.setMinimumWidth(360)
         browse = QPushButton("Browse…")
@@ -29,8 +35,10 @@ class _FilePickerRow:
         grid.addWidget(desc_label, row + 1, 1, 1, 2)
 
     def _browse(self) -> None:
+        current = self.path()
+        start = str(Path(current).parent) if current else self._start_folder()
         path, _ = QFileDialog.getOpenFileName(
-            None, "Select file", "", "Text files (*.txt);;All files (*)"
+            None, "Select file", start, "Text files (*.txt);;All files (*)"
         )
         if path:
             self.edit.setText(path)
@@ -56,14 +64,16 @@ class StartupDialog(QDialog):
             grid,
             0,
             "AAVSO Report",
-            "The AAVSO Extended-format report to analyze — transformed or untransformed.",
+            "The AAVSO Extended-format report to analyze, transformed or untransformed.",
         )
         self.general_row = _FilePickerRow(
             grid,
             2,
             "General Report",
-            "VPhot's General Export for this session — adds SNR, FWHM, Skyglow, Max "
-            "ADU, and (for ensembles) individual comparison star curves.",
+            "VPhot's General Export for this session. Adds SNR, FWHM, Skyglow, Max "
+            "ADU, and (for ensembles) each comparison star, which the uncertainty needs. "
+            + EXPORT_HELP,
+            start_folder=self._aavso_folder,
         )
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -72,6 +82,11 @@ class StartupDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self._buttons = buttons
+
+    def _aavso_folder(self) -> str:
+        """The General Report is usually saved next to the AAVSO Report."""
+        aavso = self.aavso_row.path()
+        return str(Path(aavso).parent) if aavso else last_folder()
 
     def _on_accept(self) -> None:
         if not self.aavso_row.path():

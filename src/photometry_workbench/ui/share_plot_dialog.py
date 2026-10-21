@@ -4,6 +4,8 @@ posting elsewhere."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from PySide6.QtWidgets import (
@@ -104,8 +106,10 @@ class SharePlotDialog(QDialog):
         star_slug = self.session.star_name.replace(" ", "_")
         filt_slug = "".join(filters) if filters else "None"
         default_name = f"{star_slug}_{filt_slug}{suffix}.jpg"
+        source = self.session.aavso.source_path
+        folder = source.parent if source else Path.home()
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export Plot as JPEG", default_name, "JPEG Image (*.jpg *.jpeg)"
+            self, "Export Plot as JPEG", str(folder / default_name), "JPEG Image (*.jpg *.jpeg)"
         )
         if not path:
             return

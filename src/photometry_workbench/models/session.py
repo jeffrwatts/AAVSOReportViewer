@@ -12,7 +12,7 @@ import pandas as pd
 from photometry_workbench.models.jd import jd_to_date
 from photometry_workbench.parsing.aavso_report import AavsoReport
 from photometry_workbench.parsing.chart_photometry import ChartMag, fetch_chart_auids, fetch_chart_photometry
-from photometry_workbench.parsing.general_report import GeneralReport
+from photometry_workbench.parsing.general_report import EXPORT_HELP, GeneralReport
 from photometry_workbench.parsing.vsx import fetch_vsx_range
 from photometry_workbench.transform.coefficients import TransformCoefficients, parse_report_header
 from photometry_workbench.transform.engine import (
@@ -33,6 +33,10 @@ from photometry_workbench.transform.engine import (
 # robust to that where exact-equality would silently drop rows. 0.0001d (~8.6s) is well
 # under a typical per-filter cadence.
 _JOIN_TOLERANCE_DAYS = 0.0001
+
+# An ensemble's CREFMAG is the average of its comps' catalog magnitudes, both to 0.001, so
+# the General Report's comps average to within rounding of it when none is missing.
+_CREFMAG_TOLERANCE = 0.003
 
 SECTION_TARGETS = "Targets"
 SECTION_CHECK = "Check stars"
@@ -141,6 +145,39 @@ class Session:
         self.general = general
         self._merged = None
 
+    def general_report_problem(self, general: GeneralReport) -> str | None:
+        """Why `general` can't be used with this session's report, or None. It must be
+        from the same session (frame times match), and for an ensemble it must have every
+        comparison star: the per-comp spread needs all of them. Checked by their catalog
+        magnitudes averaging to the report's CREFMAG; skipped when the catalog isn't
+        available (it's needed for the per-comp work anyway)."""
+        gdf = general.df
+        times = gdf["JD"].dropna().to_numpy()
+        dates = self.aavso.df["DATE"].dropna().to_numpy()
+        if times.size == 0 or dates.size == 0 or np.abs(times[:, None] - dates[None, :]).min() > _JOIN_TOLERANCE_DAYS:
+            return "None of its frame times match this AAVSO Report. Is it from a different session?"
+        if not self.is_ensemble:
+            return None
+        comps = self._comp_columns(general)
+        if not comps:
+            return f"It has no comparison star columns, and this report is an ensemble. {EXPORT_HELP}"
+        catalog = self.chart_photometry()
+        if not catalog:
+            return None
+        for filt, rows in self.aavso.df.groupby("FILT", sort=False):
+            crefmag = rows["CREFMAG"].median() if "CREFMAG" in rows else np.nan
+            mags = [catalog.get(c, {}).get(filt) for c in comps]
+            if np.isnan(crefmag) or any(m is None for m in mags):
+                continue
+            average = float(np.mean([m.mag for m in mags]))
+            if abs(average - crefmag) > _CREFMAG_TOLERANCE:
+                return (
+                    f"Its comparison stars ({', '.join(comps)}) average {average:.3f} in {filt}, but the "
+                    f"ensemble in the AAVSO Report averages {crefmag:.3f}, so at least one comparison "
+                    f"star is missing. {EXPORT_HELP}"
+                )
+        return None
+
     def attach_after_report(self, after: AavsoReport, source: str | None = None) -> None:
         """The transformed counterpart of this session's (untransformed) report --
         matched by filter only, not star name, since the transform (like TA) can rename
@@ -213,7 +250,7 @@ class Session:
     def _require_general_report(self) -> None:
         if self.general is None:
             raise ValueError(
-                "This needs VPhot's General Report for the session (File → Open General Report…) -- "
+                "This needs VPhot's General Report for the session (step 1, Add General Report…) -- "
                 "only it has each comparison star's magnitude per frame."
             )
 
@@ -581,12 +618,11 @@ class Session:
     def comp_star_names(self) -> list[str]:
         """Named comparison-star columns from the General Report, for an ensemble
         session (i.e. every star column that isn't the target or the check star)."""
-        if self.general is None:
-            return []
-        exclude = {self.star_name}
-        knames = self.aavso.df["KNAME"].astype(str).unique()
-        exclude.update(knames)
-        return [c for c in self.general.star_columns if c not in exclude]
+        return self._comp_columns(self.general) if self.general is not None else []
+
+    def _comp_columns(self, general: GeneralReport) -> list[str]:
+        exclude = {self.star_name, *self.aavso.df["KNAME"].astype(str).unique()}
+        return [c for c in general.star_columns if c not in exclude]
 
     def comp_stars_light_curve(
         self, filters: list[str] | None = None, stars: list[str] | None = None

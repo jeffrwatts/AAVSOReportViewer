@@ -8,6 +8,7 @@ from importlib.metadata import PackageNotFoundError, version
 APP_NAME = "Photometry Workbench"
 APP_ID = "PhotometryWorkbench"
 DIST_NAME = "photometry-workbench"
+PROJECT_URL = "https://github.com/jeffrwatts/PhotometryWorkbench"
 
 
 def app_version() -> str:

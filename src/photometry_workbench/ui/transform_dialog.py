@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -21,16 +21,13 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from photometry_workbench import APP_ID
 from photometry_workbench.models.session import Session
 from photometry_workbench.transform.coefficients import TransformCoefficients, parse_tg_ini
 from photometry_workbench.transform.engine import describe_set, transform_set
 
+from photometry_workbench.ui.app_settings import settings
+
 SETTINGS_KEY = "transform/coefficients_path"
-
-
-def settings() -> QSettings:
-    return QSettings(APP_ID, APP_ID)
 
 
 class TransformDialog(QDialog):
