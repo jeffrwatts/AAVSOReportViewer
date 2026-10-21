@@ -160,8 +160,13 @@ def plot_target_before_after(ax, session, thumbnail: bool, filters: list[str] | 
         ax.legend(fontsize=8)
 
 
-# Hawaii-Aleutian Standard Time -- fixed UTC-10:00, no DST observed.
-_HST = datetime.timezone(datetime.timedelta(hours=-10))
+def _local_zone(first_jd: float) -> datetime.timezone:
+    """This computer's timezone as it was on the night of `first_jd` (daylight saving
+    included), as a fixed offset named like the system's zone (e.g. 'HST'). A session
+    that straddles a daylight-saving change is off by an hour after it; rare enough
+    to accept for a shared plot."""
+    local = jd_to_datetime(first_jd).astimezone()
+    return datetime.timezone(local.utcoffset(), local.tzname())
 
 
 def plot_share_light_curve(ax, df: pd.DataFrame, time_mode: str, filters: list[str]) -> None:
@@ -169,7 +174,7 @@ def plot_share_light_curve(ax, df: pd.DataFrame, time_mode: str, filters: list[s
     (unrotated-offset) time axis in the caller's chosen units, and one color-coded
     series per selected filter (a legend is shown only when more than one filter is
     plotted). df is long-form with DATE, FILT, MAG columns. time_mode is one of
-    'jd', 'utc', 'hst'."""
+    'jd', 'utc', 'local' (this computer's timezone)."""
     if df.empty:
         ax.text(
             0.5, 0.5, "No data for this selection", ha="center", va="center",
@@ -186,7 +191,7 @@ def plot_share_light_curve(ax, df: pd.DataFrame, time_mode: str, filters: list[s
     # absolute instant it is, not how ticks are labeled. The label timezone has to
     # be passed explicitly to the locator/formatter, or both axes silently render
     # in UTC regardless of which mode was requested.
-    tz = _HST if time_mode == "hst" else datetime.timezone.utc
+    tz = _local_zone(float(df["DATE"].min())) if time_mode == "local" else datetime.timezone.utc
 
     for filt in filters:
         sub = df.loc[df["FILT"] == filt]
@@ -212,7 +217,7 @@ def plot_share_light_curve(ax, df: pd.DataFrame, time_mode: str, filters: list[s
         locator = mdates.AutoDateLocator(tz=tz)
         ax.xaxis.set_major_locator(locator)
         ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator, tz=tz))
-        ax.set_xlabel("UTC" if time_mode == "utc" else "HST", fontsize=10)
+        ax.set_xlabel("UTC" if time_mode == "utc" else f"Local time ({tz.tzname(None)})", fontsize=10)
 
     ax.invert_yaxis()
     ax.set_ylabel("Magnitude", fontsize=10)
