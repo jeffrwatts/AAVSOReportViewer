@@ -53,17 +53,29 @@ report without it, and you can add a corrected one later from step 1.
 The app opens empty. Across the top is the four-step strip; each step shows where it
 stands and the button that moves it along.
 
+<br>
+
 ![The empty window](images/01-empty.png)
+
+<br>
 
 **Open Report…** asks for the AAVSO report and, optionally, the General Report. The
 General Report's Browse starts in the AAVSO report's folder, since they're usually
 saved together.
 
+<br>
+
 ![Open Report](images/02-open-report.png)
+
+<br>
 
 The main window then shows one table for the session, with a row per star and filter:
 
+<br>
+
 ![After opening the session](images/03-inspect.png)
+
+<br>
 
 - **Targets:** the target's average, range and scatter (Std) per filter, the known
   V range from VSX, and the average SNR.
@@ -96,7 +108,11 @@ submit untransformed (TRANS=NO).
 it will use (in bold) and how each filter is transformed. The file is remembered for
 next time.
 
+<br>
+
 ![Apply Transform](images/04-transform-dialog.png)
+
+<br>
 
 - **Single comparison star:** the same transform TransformApplier does, giving the
   same magnitudes.
@@ -117,7 +133,11 @@ target separately and checks that they average to the ensemble result. If they d
 After the transform, the table gains **(After)** columns, and the Compare step lists
 the check star's offset from catalog before and after:
 
+<br>
+
 ![After the transform](images/05-transformed.png)
+
+<br>
 
 Here the check star in B moved from +0.110 to +0.028, now inside its catalog error,
 and comp 110's B offset dropped from −0.079 to −0.023. Two new charts show the check
@@ -132,7 +152,11 @@ comparison star.
 **Create Submission Report…** opens a short wizard. It first asks whether to submit
 the transformed or the untransformed magnitudes, then:
 
+<br>
+
 ![Combine frames?](images/07-wizard-combine.png)
+
+<br>
 
 **Combine frames into one observation?** Yes reports one point per filter, the mean of
 all its frames; No reports every frame (a light curve). For CY Aqr, a pulsating star
@@ -144,13 +168,21 @@ observation, with the target's and check star's scatter shown to help you decide
 For a light curve with an ensemble, the uncertainty combines the spread across the
 comparison stars with the SNR error:
 
+<br>
+
 ![Each frame reported on its own](images/08-wizard-light-curve.png)
+
+<br>
 
 The **Preview** shows the rows that will be saved, with each row's NOTES (including
 the method, the comparison stars and their spread) and how much the transform
 coefficients' own errors move the result (shown for reference, not added in).
 
+<br>
+
 ![Preview](images/09-wizard-preview.png)
+
+<br>
 
 **Save…** writes the file next to the AAVSO report, named like
 `AAVSOReport_CY-Aqr_VBR_20260905_submit.txt`. Upload it with WebObs (File upload).
@@ -196,7 +228,11 @@ single frame's uncertainty predicts, and flags a scatter 1.5 times or more highe
 reported or transformed, for any filters, with the time axis in JD, UTC or your
 computer's local time. **Export as JPEG…** saves it.
 
+<br>
+
 ![Share Plot](images/10-share-plot.png)
+
+<br>
 
 ## Settings, network and limitations
 

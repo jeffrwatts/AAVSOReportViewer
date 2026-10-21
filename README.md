@@ -1,11 +1,15 @@
 # Photometry Workbench
 
-A desktop app for photometry reduced in the AAVSO's VPhot. Open a
+A desktop app for photometry processed in the AAVSO's VPhot. Open a
 session's AAVSO report, see how good it is, apply your transform (single comparison
 star or ensemble), check what the transform changed, and save a report ready to
 upload to the AAVSO with WebObs.
 
+<br>
+
 ![The main window after a transform](docs/images/05-transformed.png)
+
+<br>
 
 What it does:
 
