@@ -257,25 +257,42 @@ class _LightCurvePage(QWizardPage):
     def __init__(self, wizard: "SubmissionWizard"):
         super().__init__()
         self._wizard = wizard
-        self.setTitle("Each frame reported on its own")
+        self.setTitle("The uncertainty for each frame")
         layout = QVBoxLayout(self)
         self.text = _wrapped("")
         layout.addWidget(self.text)
-        self.spread_caption = _wrapped(
-            "Each frame's uncertainty combines two parts: how much the comparison stars disagree "
-            "(their spread) and the target's own SNR error. Medians over the frames:", gray=True)
+        self.spread_caption = _wrapped("Typical values in this session (median over the frames):", gray=True)
         layout.addWidget(self.spread_caption)
-        self.spread_table = _read_only_table(["Filter", "Comps", "Spread across comps", "SNR error", "Reported (combined)"])
+        self.spread_table = _read_only_table(
+            ["Filter", "Comparison stars", "Spread between comps", "SNR error", "Reported uncertainty"]
+        )
         layout.addWidget(self.spread_table)
         self.problem = _wrapped("")
         self.problem.setStyleSheet(f"color: {coloring.FLAG.name()};")
         layout.addWidget(self.problem)
+        layout.addWidget(_wrapped("Nothing to choose here. Next shows the rows that will be saved.", gray=True))
         layout.addStretch()
 
     def initializePage(self):
         method = self._wizard.method()
-        self.text.setText(method.description)
         ensemble = method == ErrorMethod.COMP_SPREAD
+        transformed = self._wizard.source_report().is_transformed
+        if ensemble:
+            n = len(self._wizard.session.comp_star_names())
+            self.text.setText(
+                f"Each of the {n} comparison stars gives its own estimate of the target's magnitude in "
+                "every frame. How much those estimates disagree measures the uncertainty directly: a "
+                "frame where the comparison stars agree closely gets a small uncertainty, and one where "
+                "they disagree gets a larger one.\n\n"
+                "That spread is combined with the target's SNR error (the two added in quadrature) to "
+                "give the uncertainty reported for the frame."
+            )
+        else:
+            self.text.setText(
+                "With one comparison star there's one estimate of the target per frame, so each frame's "
+                "uncertainty is its SNR-based error from VPhot"
+                + (", carried through the transform." if transformed else ".")
+            )
         self.spread_table.setVisible(ensemble)
         self.spread_caption.setVisible(ensemble)
         self.problem.clear()
