@@ -41,7 +41,12 @@ from photometry_workbench.submission.builder import (
 )
 from photometry_workbench.transform.engine import untransformable_reason
 from photometry_workbench.ui import coloring
-from photometry_workbench.ui.example_diagrams import combine_diagram, light_curve_diagram
+from photometry_workbench.ui.example_diagrams import (
+    combine_diagram,
+    light_curve_diagram,
+    steady_diagram,
+    varies_diagram,
+)
 
 PAGE_SOURCE, PAGE_COMBINE, PAGE_VARIES, PAGE_LIGHT_CURVE, PAGE_PREVIEW = range(5)
 
@@ -224,23 +229,38 @@ class _VariesPage(QWizardPage):
     def __init__(self, wizard: "SubmissionWizard"):
         super().__init__()
         self._wizard = wizard
-        self.setTitle("Will the target vary during the observation?")
+        self.setTitle("Will the target change during these frames?")
         layout = QVBoxLayout(self)
+        cards = QHBoxLayout()
+        cards.setSpacing(12)
+        steady = _ChoiceCard(
+            "Steady during these frames",
+            steady_diagram(),
+            "The target holds its brightness while these frames are taken, so its own scatter is "
+            "the uncertainty. For a supernova or a slow variable.",
+        )
+        varies = _ChoiceCard(
+            "May change during these frames",
+            varies_diagram(),
+            "The target may brighten or fade while these frames are taken, so its scatter would "
+            "include that change. The check star's scatter is the uncertainty instead. For a fast "
+            "pulsator or a flaring star.",
+        )
+        self.choice = QButtonGroup(self)
+        for i, card in enumerate((steady, varies)):
+            self.choice.addButton(card.radio, i)
+            cards.addWidget(card, 1)
+        self.choice.idToggled.connect(lambda *_: self.completeChanged.emit())
+        layout.addLayout(cards)
         layout.addWidget(_wrapped(
-            "Do you expect the variable to change brightness over the span of these frames? "
-            "If not, its own scatter is the uncertainty. If it may (a fast pulsator, a flaring "
-            "star), the scatter of a check star of similar brightness is used instead."
+            "To help you decide: if the target scatters much more than the check star, it's "
+            "probably changing. A fainter target scatters a little more on its own.", gray=True,
         ))
-        self.choice = _choice(self, layout, [
-            "No, not expected to change during the observation (e.g. a supernova, a slow variable)",
-            "Yes, it may change during the observation",
-        ])
-        layout.addWidget(_wrapped(
-            "A check: if the target's Std is well above the check star's (allowing for the target "
-            "being fainter), the target is probably varying.", gray=True,
-        ))
-        self.table = _read_only_table(["Filter", "Frames", "Target Std", "Check Std", "Target − Check"])
+        self.table = _read_only_table(
+            ["Filter", "Frames", "Target scatter (Std)", "Check star scatter (Std)", "Target vs check star"]
+        )
         layout.addWidget(self.table)
+        layout.addStretch()
 
     def initializePage(self):
         report = self._wizard.source_report()
@@ -253,10 +273,15 @@ class _VariesPage(QWizardPage):
             _set_cell(self.table, r, 1, str(len(rows)))
             _set_cell(self.table, r, 2, f"{rows['MAG'].std(ddof=1):.3f}")
             _set_cell(self.table, r, 3, f"{rows['KEFF'].std(ddof=1):.3f}")
-            item = _set_cell(self.table, r, 4, f"{separation:+.2f} mag")
+            side = "fainter" if separation > 0 else "brighter"
+            item = _set_cell(self.table, r, 4, f"{abs(separation):.2f} mag {side}")
             if abs(separation) > CHECK_MAG_LIMIT:
                 item.setForeground(coloring.FLAG)
-                item.setToolTip(f"More than {CHECK_MAG_LIMIT:g} mag apart, a poor stand-in for the target's scatter.")
+                item.setToolTip(
+                    f"More than {CHECK_MAG_LIMIT:g} mag apart, so the check star's scatter is a poor "
+                    "stand-in for the target's."
+                )
+        _fit_height(self.table)
 
     def isComplete(self):
         return self.choice.checkedId() >= 0

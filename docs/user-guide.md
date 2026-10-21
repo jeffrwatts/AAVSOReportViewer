@@ -164,8 +164,10 @@ the uncertainty. **A light curve** reports every frame as its own point. For CY 
 pulsating star that goes through about 0.75 mag in V every 88 minutes, it's a light
 curve.
 
-When combining, the next question is whether the target varies during the
-observation, with the target's and check star's scatter shown to help you decide.
+When combining, the next question is **Will the target change during these
+frames?** If it holds steady, its own scatter is the uncertainty; if it may change, the
+check star's scatter is used instead. A table of the target's and check star's scatter
+helps you decide.
 
 For a light curve with an ensemble, the uncertainty combines the spread across the
 comparison stars with the SNR error:
