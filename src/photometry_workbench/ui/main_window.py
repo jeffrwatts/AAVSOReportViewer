@@ -726,14 +726,12 @@ class MainWindow(QMainWindow):
 
         if transformed:
             check = [r for r in s.build_summary_rows() if r.section == SECTION_CHECK]
-            moves = " · ".join(
+            moves = "<br>".join(
                 f"{r.filt} {r.delta:+.3f} → {r.delta_after:+.3f}"
                 for r in check if r.delta is not None and r.delta_after is not None
             )
             name = check[0].star_label if check else "check star"
-            compare = StepState(
-                f"Check {name} vs catalog:<br>{moves}", DONE, [("Before/after charts", self._show_before_after)]
-            )
+            compare = StepState(f"Check {name} vs catalog, before → after:<br>{moves}", DONE)
         elif s.is_transformed:
             compare = StepState("No before/after: the report was transformed outside the app.", UPCOMING, enabled=False)
         else:
@@ -753,11 +751,6 @@ class MainWindow(QMainWindow):
                 [("Create Submission Report…", self._create_submission)],
             )
         return [inspect, transform, compare, submit]
-
-    def _show_before_after(self) -> None:
-        thumb = self.thumbnails.get("check_before_after")
-        if thumb is not None:
-            self._scroll_area.ensureWidgetVisible(thumb, 0, 40)
 
     def _refresh_all(self) -> None:
         self._refresh_steps()
