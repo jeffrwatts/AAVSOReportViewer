@@ -172,7 +172,7 @@ comparison stars with the SNR error:
 
 <br>
 
-![Each frame reported on its own](images/08-wizard-light-curve.png)
+![The uncertainty for each frame](images/08-wizard-light-curve.png)
 
 <br>
 
