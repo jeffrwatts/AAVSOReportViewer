@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from photometry_workbench import APP_NAME
 
 
 class _FilePickerRow:
@@ -41,12 +40,12 @@ class _FilePickerRow:
 
 
 class StartupDialog(QDialog):
-    """Startup dialog: AAVSO Report (required) and General Report (optional). The
-    transform is applied in the app (Transform menu)."""
+    """Step 1's Open Report dialog: AAVSO Report (required) and General Report
+    (optional)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(APP_NAME)
+        self.setWindowTitle("Open Report")
         self.setMinimumWidth(480)
 
         layout = QVBoxLayout(self)
@@ -68,6 +67,7 @@ class StartupDialog(QDialog):
         )
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setText("Open")
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

@@ -205,8 +205,9 @@ def untransformable_reason(report: AavsoReport) -> str | None:
         return "This report is already transformed."
     if transform_set(report.filters) is None:
         return (
-            f"No transform set for filters {', '.join(report.filters)} -- "
-            f"supported: {', '.join(name for name, _ in TRANSFORM_SETS.values())}."
+            f"The transform needs filters it has coefficients for "
+            f"({' or '.join(name for name, _ in TRANSFORM_SETS.values())}); this session has "
+            f"{', '.join(report.filters)} only."
         )
     return None
 

@@ -114,7 +114,7 @@ def test_transform_rejects_unsupported_reports():
 
     raw = parse_aavso_report(FIXTURES / "AAVSOReport_SN-2026aaiv_BVR_20261011.txt")
     v_only = report_from_frame(raw.df[raw.df["FILT"] == "V"])
-    with pytest.raises(TransformError, match="No transform set"):
+    with pytest.raises(TransformError, match="needs filters it has coefficients for"):
         transform_report(v_only, coeffs)
 
 

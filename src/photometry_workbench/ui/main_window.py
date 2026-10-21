@@ -9,12 +9,14 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QGridLayout,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QMainWindow,
     QMessageBox,
     QScrollArea,
     QTableWidget,
+    QPushButton,
     QTableWidgetItem,
     QToolButton,
     QVBoxLayout,
@@ -131,21 +133,24 @@ def _mark(item: QTableWidgetItem, color, tip: str | None) -> None:
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, session: Session):
+    def __init__(self, session: Session | None = None):
         super().__init__()
         self.session = session
         self._saved_path: Path | None = None
 
         self.setWindowTitle(APP_NAME)
 
-        self._build_menu()
-
         central = QWidget()
         layout = QVBoxLayout(central)
 
         self.header_label = QLabel()
         self.header_label.setStyleSheet("font-size: 13px; font-weight: 600; padding: 4px;")
-        layout.addWidget(self.header_label)
+        header_row = QHBoxLayout()
+        header_row.addWidget(self.header_label, 1)
+        share = QPushButton("Share Plot…")
+        share.clicked.connect(self._open_share_plot)
+        header_row.addWidget(share)
+        layout.addLayout(header_row)
 
         self.table = self._make_table(TABLE_COLUMNS)
         self.table.cellClicked.connect(self._on_table_cell_clicked)
@@ -164,6 +169,10 @@ class MainWindow(QMainWindow):
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.setSpacing(0)
         outer_layout.addWidget(self.step_strip)
+        self.empty_label = QLabel("Open a VPhot report to start: step 1, Open Report…")
+        self.empty_label.setAlignment(Qt.AlignCenter)
+        self.empty_label.setStyleSheet("color: gray; font-size: 14px;")
+        outer_layout.addWidget(self.empty_label, 1)
         outer_layout.addWidget(scroll_area, 1)
         self.setCentralWidget(outer)
 
@@ -220,40 +229,8 @@ class MainWindow(QMainWindow):
 
     # -- menu -----------------------------------------------------------------
 
-    def _build_menu(self) -> None:
-        menu = self.menuBar().addMenu("&File")
-
-        open_set_action = menu.addAction("Open Report Set…")
-        open_set_action.triggered.connect(self._open_report_set)
-
-        menu.addSeparator()
-        open_action = menu.addAction("Open AAVSO Report…")
-        open_action.triggered.connect(self._open_aavso_report)
-
-        open_general_action = menu.addAction("Open General Report…")
-        open_general_action.triggered.connect(self._prompt_for_general_report)
-
-        menu.addSeparator()
-        exit_action = menu.addAction("Exit")
-        exit_action.triggered.connect(self.close)
-
-        transform_menu = self.menuBar().addMenu("&Transform")
-        apply_action = transform_menu.addAction("Apply Transform…")
-        apply_action.triggered.connect(self._apply_transform)
-        self._clear_transform_action = transform_menu.addAction("Clear Transform")
-        self._clear_transform_action.triggered.connect(self._clear_transform)
-        transform_menu.aboutToShow.connect(self._update_transform_menu)
-
-        report_menu = self.menuBar().addMenu("&Report")
-        submit_action = report_menu.addAction("Create Submission Report…")
-        submit_action.triggered.connect(self._create_submission)
-
-        chart_menu = self.menuBar().addMenu("&Chart")
-        share_plot_action = chart_menu.addAction("Share Plot…")
-        share_plot_action.triggered.connect(self._open_share_plot)
-
-    def _open_report_set(self) -> None:
-        """Load a whole new session (AAVSO Report + optional General Report) via the same dialog shown at startup, without needing to restart the app."""
+    def _open_report(self) -> None:
+        """Load a session (AAVSO Report + optional General Report), replacing any open one."""
         dialog = StartupDialog(self)
         if dialog.exec() != QDialog.Accepted:
             return
@@ -262,24 +239,9 @@ class MainWindow(QMainWindow):
             general_path = dialog.general_report_path()
             general = parse_general_report(general_path) if general_path else None
         except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Failed to load report set", str(exc))
-            return
-        self.session = Session(report, general)
-        self._saved_path = None
-        self._refresh_all()
-
-    def _open_aavso_report(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Open AAVSO Report", "", "Text files (*.txt);;All files (*)"
-        )
-        if not path:
-            return
-        try:
-            report = parse_aavso_report(path)
-        except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Failed to load report", str(exc))
             return
-        self.session = Session(report)
+        self.session = Session(report, general)
         self._saved_path = None
         self._refresh_all()
 
@@ -324,9 +286,6 @@ class MainWindow(QMainWindow):
         problem = self.session.ensemble_cross_check()
         if problem:
             QMessageBox.warning(self, "Ensemble cross-check", problem)
-
-    def _update_transform_menu(self) -> None:
-        self._clear_transform_action.setEnabled(self.session.has_after_report)
 
     def _clear_transform(self) -> None:
         self.session.clear_transform()
@@ -699,10 +658,18 @@ class MainWindow(QMainWindow):
 
     def _step_states(self) -> list[StepState]:
         s = self.session
+        if s is None:
+            return [
+                StepState("No report loaded. Open a VPhot AAVSO report, and its General Report if you have it.",
+                          CURRENT, [("Open Report…", self._open_report)]),
+                StepState("Apply your Transform Generator coefficients.", UPCOMING, enabled=False),
+                StepState("See how the check star and comps moved.", UPCOMING, enabled=False),
+                StepState("Build the report to submit to the AAVSO.", UPCOMING, enabled=False),
+            ]
         n_frames = int((s.aavso.df["FILT"] == s.filters[0]).sum()) if s.filters else 0
         comps = f"ensemble of {len(s.comp_star_names())} comps" if s.is_ensemble else "single comp"
         general = "General Report loaded" if s.has_general_report else "no General Report"
-        inspect_actions = []
+        inspect_actions = [("Open Another…", self._open_report)]
         if not s.has_general_report:
             inspect_actions.append(("Add General Report…", self._prompt_for_general_report))
         inspect = StepState(
@@ -710,8 +677,11 @@ class MainWindow(QMainWindow):
         )
 
         transformed = s.has_after_report
+        cant_transform = None if (s.is_transformed or transformed) else untransformable_reason(s.aavso)
         if s.is_transformed:
             transform = StepState("This report is already transformed (TRANS=YES).", DONE)
+        elif cant_transform:
+            transform = StepState(f"Not available. {cant_transform}", UPCOMING, enabled=False)
         elif transformed:
             source = s.after_coeffs.source if s.after_coeffs else (s.after_source or "")
             transform = StepState(
@@ -720,7 +690,7 @@ class MainWindow(QMainWindow):
             )
         else:
             transform = StepState(
-                "Not applied yet. Uses your Transform Generator coefficients (.ini).", CURRENT,
+                "Recommended, not required. Uses your Transform Generator coefficients (.ini).", CURRENT,
                 [("Apply Transform…", self._apply_transform)],
             )
 
@@ -732,8 +702,8 @@ class MainWindow(QMainWindow):
             )
             name = check[0].star_label if check else "check star"
             compare = StepState(f"Check {name} vs catalog, before → after:<br>{moves}", DONE)
-        elif s.is_transformed:
-            compare = StepState("No before/after: the report was transformed outside the app.", UPCOMING, enabled=False)
+        elif s.is_transformed or cant_transform:
+            compare = StepState("No before/after without an in-app transform.", UPCOMING, enabled=False)
         else:
             compare = StepState("After transforming: how far the check star and comps moved.", UPCOMING, enabled=False)
 
@@ -743,10 +713,10 @@ class MainWindow(QMainWindow):
                 [("Create Again…", self._create_submission)],
             )
         else:
-            ready = transformed or s.is_transformed
+            ready = transformed or s.is_transformed or bool(cant_transform)
             submit = StepState(
                 "Build the report to submit, with the right uncertainty." if ready
-                else "You can submit untransformed, but transforming first is better.",
+                else "Or submit now, untransformed: the wizard can still combine frames and pick the uncertainty.",
                 CURRENT if ready else UPCOMING,
                 [("Create Submission Report…", self._create_submission)],
             )
@@ -754,6 +724,11 @@ class MainWindow(QMainWindow):
 
     def _refresh_all(self) -> None:
         self._refresh_steps()
+        empty = self.session is None
+        self.empty_label.setVisible(empty)
+        self._scroll_area.setVisible(not empty)
+        if empty:
+            return
         self._refresh_header()
         self._refresh_table()
         self._refresh_charts()
