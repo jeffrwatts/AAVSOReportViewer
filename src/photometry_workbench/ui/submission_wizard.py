@@ -6,11 +6,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QFileDialog,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -39,6 +40,7 @@ from photometry_workbench.submission.builder import (
 )
 from photometry_workbench.transform.engine import untransformable_reason
 from photometry_workbench.ui import coloring
+from photometry_workbench.ui.example_diagrams import combine_diagram, light_curve_diagram
 
 PAGE_SOURCE, PAGE_COMBINE, PAGE_VARIES, PAGE_LIGHT_CURVE, PAGE_PREVIEW = range(5)
 
@@ -62,6 +64,39 @@ def _choice(page: QWizardPage, layout: QVBoxLayout, options: list[str]) -> QButt
         layout.addWidget(button)
     group.idToggled.connect(lambda *_: page.completeChanged.emit())
     return group
+
+
+class _ChoiceCard(QFrame):
+    """One answer as a card: a radio-button title, a diagram and a short description.
+    Clicking anywhere on the card picks it."""
+
+    def __init__(self, title: str, diagram: QWidget, text: str):
+        super().__init__()
+        self.setObjectName("card")
+        self.radio = QRadioButton(title)
+        font = self.radio.font()
+        font.setBold(True)
+        self.radio.setFont(font)
+        self.radio.toggled.connect(self._restyle)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 10, 12, 12)
+        layout.addWidget(self.radio)
+        layout.addWidget(diagram)
+        layout.addWidget(_wrapped(text))
+        layout.addStretch()
+        self.setCursor(Qt.PointingHandCursor)
+        for child in (self, *self.findChildren(QWidget)):
+            child.installEventFilter(self)
+        self._restyle()
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.MouseButtonPress:
+            self.radio.setChecked(True)
+        return False
+
+    def _restyle(self, *_):
+        border = "2px solid palette(highlight)" if self.radio.isChecked() else "1px solid palette(mid)"
+        self.setStyleSheet(f"QFrame#card {{ border: {border}; border-radius: 8px; }}")
 
 
 def _read_only_table(columns: list[str]) -> QTableWidget:
@@ -132,19 +167,30 @@ class _CombinePage(QWizardPage):
     def __init__(self, wizard: "SubmissionWizard"):
         super().__init__()
         self._wizard = wizard
-        self.setTitle("Combine frames into one observation?")
+        self.setTitle("How will you report these frames?")
         layout = QVBoxLayout(self)
-        layout.addWidget(_wrapped(
-            "Do you have more than one image that you'll report as a single data point? "
-            "Combining frames is preferred when the science allows it: the scatter across "
-            "the frames then gives a real uncertainty instead of one based on SNR alone."
-        ))
+        cards = QHBoxLayout()
+        cards.setSpacing(12)
+        combine = _ChoiceCard(
+            "One observation per filter",
+            combine_diagram(),
+            "Frames taken close together, averaged into a single point. Their scatter gives the "
+            "uncertainty. Preferred when the science allows it: a supernova, a slow variable.",
+        )
+        light_curve = _ChoiceCard(
+            "A light curve",
+            light_curve_diagram(),
+            "Every frame reported as its own point, to follow the star's changes through the "
+            "session: a short-period pulsator, an eclipse.",
+        )
+        self.choice = QButtonGroup(self)
+        for i, card in enumerate((combine, light_curve)):
+            self.choice.addButton(card.radio, i)
+            cards.addWidget(card, 1)
+        self.choice.idToggled.connect(lambda *_: self.completeChanged.emit())
+        layout.addLayout(cards)
         self.summary = _wrapped("", gray=True)
         layout.addWidget(self.summary)
-        self.choice = _choice(self, layout, [
-            "Yes, combine all frames into one observation per filter",
-            "No, report every frame on its own (a light curve)",
-        ])
         layout.addStretch()
 
     def initializePage(self):

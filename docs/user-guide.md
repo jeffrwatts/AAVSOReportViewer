@@ -154,13 +154,15 @@ the transformed or the untransformed magnitudes, then:
 
 <br>
 
-![Combine frames?](images/07-wizard-combine.png)
+![How will you report these frames?](images/07-wizard-combine.png)
 
 <br>
 
-**Combine frames into one observation?** Yes reports one point per filter, the mean of
-all its frames; No reports every frame (a light curve). For CY Aqr, a pulsating star
-that goes through about 0.75 mag in V every 88 minutes, it's No.
+**How will you report these frames?** Pick one of the two cards. **One observation
+per filter** averages all of a filter's frames into one point, and their scatter gives
+the uncertainty. **A light curve** reports every frame as its own point. For CY Aqr, a
+pulsating star that goes through about 0.75 mag in V every 88 minutes, it's a light
+curve.
 
 When combining, the next question is whether the target varies during the
 observation, with the target's and check star's scatter shown to help you decide.
