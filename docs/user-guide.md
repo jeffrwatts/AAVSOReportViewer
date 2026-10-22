@@ -5,7 +5,9 @@ This guide follows one real session from VPhot to a saved AAVSO report: CY Aqr o
 VPhot against an ensemble of three comparison stars (104, 110, 140) with 117 as the
 check star. The same session is in
 [`notebooks/data/cy-aqr-2026-09-05`](../notebooks/data/cy-aqr-2026-09-05) if you want
-to follow along.
+to follow along, including `SA114-VIS.ini`, the Transform Generator coefficients for the
+telescope and camera that took it. For your own data, use your own coefficients; these
+only fit that setup.
 
 - [What you need](#what-you-need)
 - [Exporting from VPhot](#exporting-from-vphot)
@@ -106,7 +108,7 @@ submit untransformed (TRANS=NO).
 
 **Apply Transform…** asks for your TG coefficients file and shows which coefficients
 it will use (in bold) and how each filter is transformed. The file is remembered for
-next time.
+next time. To follow along with the sample session, pick `SA114-VIS.ini` from its folder.
 
 <br>
 
