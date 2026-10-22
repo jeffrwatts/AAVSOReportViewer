@@ -19,3 +19,7 @@ temp2/
 
 # Jupyter autosave copies
 .ipynb_checkpoints/
+
+# PyInstaller output
+build/
+dist/

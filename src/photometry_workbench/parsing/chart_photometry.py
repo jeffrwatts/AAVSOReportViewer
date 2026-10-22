@@ -11,6 +11,8 @@ need this.
 from __future__ import annotations
 
 import json
+import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,7 +31,15 @@ _BAND_TO_FILTER = {"Rc": "R", "Ic": "I"}
 # Every successful chart fetch is saved here, and used when the chart service can't be
 # reached (it was down for days in October 2026), so a session that loaded once keeps
 # working offline.
-CACHE_DIR = Path.home() / "Library/Caches" / APP_ID / "charts"
+def _cache_root() -> Path:
+    if sys.platform == "darwin":
+        return Path.home() / "Library/Caches"
+    if sys.platform == "win32":
+        return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local")
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+
+
+CACHE_DIR = _cache_root() / APP_ID / "charts"
 
 
 @dataclass
