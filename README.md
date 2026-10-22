@@ -73,17 +73,27 @@ uncertainty.
 
 ## Running from source
 
+`python3` must be 3.10 or newer (`python3 --version`); otherwise use a versioned one,
+such as `python3.13 -m venv .venv`.
+
 ```
 git clone https://github.com/jeffrwatts/PhotometryWorkbench
 cd PhotometryWorkbench
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/photometry-workbench
 .venv/bin/pytest
+.venv/bin/photometry-workbench
 ```
 
-For the notebook, install `".[notebook]"` as well and open it with Jupyter from the
-`notebooks` folder.
+To run the notebook, add Jupyter to the same environment and open it, still from the
+`PhotometryWorkbench` folder:
+
+```
+.venv/bin/pip install -e ".[notebook]"
+.venv/bin/jupyter notebook notebooks/ensemble_transform_walkthrough.ipynb
+```
+
+It opens in your browser; **Run › Run All Cells** runs the walkthrough.
 
 ## License
 
