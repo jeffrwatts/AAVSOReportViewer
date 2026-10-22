@@ -67,7 +67,7 @@ saved together.
 
 <br>
 
-![Open Report](images/02-open-report.png)
+<img src="images/02-open-report.png" alt="Open Report" width="78%">
 
 <br>
 
@@ -112,7 +112,7 @@ next time. To follow along with the sample session, pick `SA114-VIS.ini` from it
 
 <br>
 
-![Apply Transform](images/04-transform-dialog.png)
+<img src="images/04-transform-dialog.png" alt="Apply Transform" width="81%">
 
 <br>
 
