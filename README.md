@@ -60,7 +60,7 @@ the built-in `python3` is too old (3.9); install a current one from
 ```
 brew install pipx        # or, with python.org's Python: python3.13 -m pip install --user pipx
 pipx ensurepath          # then open a new terminal window
-pipx install git+https://github.com/jeffrwatts/PhotometryWorkbench
+pipx install git+https://github.com/jeffrwatts/PhotometryWorkbench@v1.0.0
 ```
 
 Then start it with:
@@ -69,10 +69,17 @@ Then start it with:
 photometry-workbench
 ```
 
-To update to the latest version: `pipx reinstall photometry-workbench`.
+This installs the latest release. To update when a new one comes out, run the install
+command again with the new version and `--force`, for example:
+
+```
+pipx install --force git+https://github.com/jeffrwatts/PhotometryWorkbench@v1.0.1
+```
 
 The Mac and Windows downloads are built and tested automatically for each release.
 Linux should work through pipx (it's Python and Qt) but hasn't been tried yet.
+
+To work on the code or run the notebook, see [Running from source](#running-from-source).
 
 ## Using it
 

@@ -28,7 +28,7 @@ jobs:
       - name: Install
         run: python -m pip install -e ".[build,dev]"
 
-      - name: Check the tag matches the version
+      - name: Check the tag matches the version and the README's pipx command
         if: startsWith(github.ref, 'refs/tags/')
         shell: python
         run: |
@@ -37,6 +37,8 @@ jobs:
           tag = os.environ["GITHUB_REF_NAME"]
           if tag != f"v{version}":
               raise SystemExit(f"Tag {tag} doesn't match pyproject.toml version {version}")
+          if f"pipx install git+https://github.com/jeffrwatts/PhotometryWorkbench@{tag}\n" not in open("README.md", encoding="utf-8").read():
+              raise SystemExit(f"README's pipx install command doesn't name {tag}")
 
       - name: Test
         run: python -m pytest -q
