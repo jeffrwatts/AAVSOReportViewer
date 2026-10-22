@@ -30,17 +30,35 @@ What it does:
   frames or not, does the target vary), preview the rows, and save an AAVSO Extended
   Format report ready to upload to the AAVSO with WebObs.
 
-## Install
+## Download
 
-You need Python 3.10 or newer. On a Mac the built-in `python3` is too old (3.9);
-install a current one from [python.org](https://www.python.org/downloads/) or with
-Homebrew (`brew install python`).
+Download the zip for your computer from the
+[latest release](https://github.com/jeffrwatts/PhotometryWorkbench/releases/latest):
 
-The easiest way to install the app is [pipx](https://pipx.pypa.io), which keeps it in
-its own environment and puts the `photometry-workbench` command on your path:
+- **Mac** (Apple Silicon): `PhotometryWorkbench-<version>-macos.zip`. Unzip it and move
+  Photometry Workbench to Applications.
+- **Windows**: `PhotometryWorkbench-<version>-windows.zip`. Extract it (don't run it from
+  inside the zip) and run `Photometry Workbench.exe` in the folder.
+
+The downloads aren't signed yet, so the first time you open the app:
+
+- **Mac:** macOS says it can't verify the app. Click Done, then open System Settings >
+  Privacy & Security, scroll down and click **Open Anyway**.
+- **Windows:** if "Windows protected your PC" appears, click **More info**, then
+  **Run anyway**.
+
+To update, download the new release and replace the old copy. Your settings are kept.
+
+## Install with Python
+
+On an Intel Mac or Linux, or if you'd rather run it from Python, install it with
+[pipx](https://pipx.pypa.io), which keeps it in its own environment and puts the
+`photometry-workbench` command on your path. You need Python 3.10 or newer. On a Mac
+the built-in `python3` is too old (3.9); install a current one from
+[python.org](https://www.python.org/downloads/) or with Homebrew (`brew install python`).
 
 ```
-brew install pipx        # or: python3 -m pip install --user pipx
+brew install pipx        # or, with python.org's Python: python3.13 -m pip install --user pipx
 pipx ensurepath          # then open a new terminal window
 pipx install git+https://github.com/jeffrwatts/PhotometryWorkbench
 ```
@@ -53,8 +71,8 @@ photometry-workbench
 
 To update to the latest version: `pipx reinstall photometry-workbench`.
 
-The app has been used on macOS. It should run on Windows and Linux (it's
-Python and Qt), but hasn't been tested there yet.
+The Mac and Windows downloads are built and tested automatically for each release.
+Linux should work through pipx (it's Python and Qt) but hasn't been tried yet.
 
 ## Using it
 
